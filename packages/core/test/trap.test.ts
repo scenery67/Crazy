@@ -154,15 +154,49 @@ describe('밟기', () => {
     expect(s.players[0]!.alive).toBe(false);
   });
 
-  it('아군은 밟아도 죽지 않는다', () => {
+  it('아군이 닿으면 구출된다', () => {
     const s = duel();
     s.players[1]!.teamId = s.players[0]!.teamId; // 같은 팀으로
     forceTrap(s.players[0]!);
     s.players[1]!.x = tileCenter(1);
     s.players[1]!.y = tileCenter(1);
 
-    stepMany(s, 30, () => idle);
+    step(s, idle);
     expect(s.players[0]!.alive).toBe(true);
+    expect(s.players[0]!.status).toBe(PlayerStatus.Invulnerable);
+  });
+
+  it('아군이 도착하기 전에는 갇힌 채로 있는다', () => {
+    const s = duel();
+    s.players[1]!.teamId = s.players[0]!.teamId;
+    forceTrap(s.players[0]!);
+    // 상대는 멀리 있다
+    stepMany(s, 60, () => idle);
+    expect(s.players[0]!.status).toBe(PlayerStatus.Trapped);
+  });
+
+  it('적과 아군이 같은 타일에 있으면 적이 이긴다', () => {
+    const s = makeState(ROOM, [
+      [1, 1],
+      [1, 1],
+      [1, 1],
+    ]);
+    s.players[1]!.teamId = s.players[0]!.teamId; // 아군
+    forceTrap(s.players[0]!);
+
+    step(s, idle);
+    expect(s.players[0]!.alive).toBe(false);
+  });
+
+  it('갇힌 아군은 남을 구하지 못한다', () => {
+    const s = duel();
+    s.players[1]!.teamId = s.players[0]!.teamId;
+    forceTrap(s.players[0]!);
+    forceTrap(s.players[1]!);
+    s.players[1]!.x = tileCenter(1);
+    s.players[1]!.y = tileCenter(1);
+
+    stepMany(s, 30, () => idle);
     expect(s.players[0]!.status).toBe(PlayerStatus.Trapped);
   });
 

@@ -7,3 +7,7 @@ dist-types/
 
 # 로컬 전용 도구 설정
 .claude/settings.local.json
+
+# 참고용으로 받아둔 외부 프로젝트. 저작권이 정리되지 않았으므로 절대 커밋하지 않는다
+# (이 저장소는 push하면 GitHub Pages로 자동 공개된다)
+packages/sample/

@@ -206,6 +206,10 @@ function seek(
     return (danger[index] ?? SAFE) === SAFE;
   });
 
+  // 갇힌 아군 구조가 최우선이다. 아군은 5초 안에 죽는데 아이템은 도망가지 않는다
+  const rescue = nearest(state, f, (i) => hasTrappedAlly(state, p, i));
+  if (rescue >= 0) return firstStep(state, f, rescue);
+
   const item = nearest(state, f, (i) => state.items.some((it) => it.ty * state.width + it.tx === i));
   if (item >= 0) return firstStep(state, f, item);
 
@@ -340,6 +344,16 @@ function isPassable(state: GameState, p: Player, tx: number, ty: number): boolea
   const [px, py] = playerTile(p);
   if (tx === px && ty === py) return true;
   return !state.bubbles.some((b) => b.tx === tx && b.ty === ty);
+}
+
+/** 그 타일에 물방울로 갇힌 아군이 있는가 (닿으면 구출된다) */
+function hasTrappedAlly(state: GameState, p: Player, index: number): boolean {
+  return state.players.some((o) => {
+    if (o.id === p.id || !o.alive || o.teamId !== p.teamId) return false;
+    if (o.status !== PlayerStatus.Trapped) return false;
+    const [ox, oy] = playerTile(o);
+    return oy * state.width + ox === index;
+  });
 }
 
 function touchesSoftBlock(state: GameState, tx: number, ty: number): boolean {

@@ -65,6 +65,17 @@ function updateTrapped(
     return;
   }
 
+  // 물방울은 닿으면 터진다. 누가 터뜨렸는지가 결과를 가른다
+  const contact = contactOnTile(state, p, tx, ty);
+  if (contact === 'enemy') {
+    p.alive = false;
+    return;
+  }
+  if (contact === 'ally') {
+    release(p);
+    return;
+  }
+
   // 자력 탈출: 방향을 바꿀 때마다 게이지가 오른다.
   // facing을 그대로 재사용한다 — 갇힌 동안에는 이동 시스템이 건드리지 않는다
   const move = input?.move ?? null;
@@ -77,23 +88,36 @@ function updateTrapped(
     return;
   }
 
-  if (isStompedByEnemy(state, p, tx, ty)) {
-    p.alive = false;
-    return;
-  }
-
   if (--p.statusTicks <= 0) p.alive = false;
 }
 
-/** 적팀의 멀쩡한 플레이어가 같은 타일에 있으면 밟힌 것이다. 아군은 그냥 통과한다 */
-function isStompedByEnemy(state: GameState, victim: Player, tx: number, ty: number): boolean {
-  return state.players.some((o) => {
-    if (o.id === victim.id || !o.alive) return false;
-    if (o.teamId === victim.teamId) return false;
-    if (o.status === PlayerStatus.Trapped) return false;
+/**
+ * 같은 타일에 있는 멀쩡한 플레이어가 누구인가.
+ *
+ * 아군에게도 구조 수단을 준다. 물줄기로만 구출할 수 있게 하면
+ * 창이 트랩 지속(5초) − 신관(3초) = 2초뿐이고 물풍선을 바로 옆에 놓아야 해서,
+ * 실제 플레이에서는 구출이 사실상 불가능하다.
+ * 달려가서 닿는 것이 가장 직관적인 구조 동작이기도 하다.
+ *
+ * 둘 다 있으면 적이 이긴다 — 아군이 먼저 닿았다면 이미 풀려났을 것이기 때문이다.
+ */
+function contactOnTile(
+  state: GameState,
+  victim: Player,
+  tx: number,
+  ty: number,
+): 'enemy' | 'ally' | null {
+  let ally = false;
+  for (const o of state.players) {
+    if (o.id === victim.id || !o.alive) continue;
+    // 갇힌 사람은 남을 구할 수도, 밟을 수도 없다
+    if (o.status === PlayerStatus.Trapped) continue;
     const [ox, oy] = playerTile(o);
-    return ox === tx && oy === ty;
-  });
+    if (ox !== tx || oy !== ty) continue;
+    if (o.teamId !== victim.teamId) return 'enemy';
+    ally = true;
+  }
+  return ally ? 'ally' : null;
 }
 
 function capture(p: Player): void {
