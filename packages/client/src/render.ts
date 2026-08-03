@@ -39,6 +39,7 @@ const PALETTE = {
 const PLAYER_COLORS = ['#ef5b5b', '#4fa3f7', '#5bd08a', '#f2c14e'] as const;
 /** 팀 색 — 개인전에서는 플레이어 색과 사실상 같아 보인다 */
 const TEAM_COLORS = ['#ff8a8a', '#8ac4ff', '#8ae8b4', '#ffdf8a'] as const;
+const TEAM_LABELS = ['A', 'B', 'C', 'D'] as const;
 
 /** sub-unit 좌표 → 캔버스 픽셀 */
 function px(coord: number): number {
@@ -469,7 +470,14 @@ function drawResult(ctx: CanvasRenderingContext2D, state: GameState): void {
   ctx.fillRect(0, 0, w, h);
 
   const draw = state.winnerTeamId === DRAW || state.winnerTeamId === null;
-  const label = draw ? '무승부' : `${state.winnerTeamId! + 1}팀 승리`;
+  // 개인전은 teamId가 곧 플레이어라 "3팀 승리"라고 하면 어색하다.
+  // 팀 인원수로 두 경우를 구분한다 — 렌더러가 모드를 알 필요가 없다
+  const winners = state.players.filter((p) => p.teamId === state.winnerTeamId);
+  const label = draw
+    ? '무승부'
+    : winners.length === 1
+      ? `${(winners[0]?.id ?? 0) + 1}P 승리`
+      : `${TEAM_LABELS[state.winnerTeamId! % TEAM_LABELS.length]}팀 승리`;
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';

@@ -5,10 +5,12 @@ import {
   botInput,
   createBot,
   createInitialState,
+  duoTeams,
   soloTeams,
   step,
   type Bot,
   type GameState,
+  type TeamId,
 } from '@crazy/core';
 import { Keyboard } from './input.js';
 import { createViewport, render, type Viewport } from './render.js';
@@ -17,8 +19,23 @@ import { createViewport, render, type Viewport } from './render.js';
 const MAX_LOCAL = 2;
 const TOTAL_PLAYERS = 4;
 
+type Mode = 'solo' | 'duo';
+type Difficulty = keyof typeof BOT_PRESETS;
+
 /** 사람이 잡는 인원. 나머지는 봇이 채운다 */
 let localCount = 1;
+let mode: Mode = 'solo';
+let difficulty: Difficulty = 'normal';
+
+/**
+ * 개인전은 "전원이 서로 다른 팀"인 특수 케이스다.
+ * 2v2는 대각선끼리 묶여서 시작부터 붙어 있지 않다.
+ */
+function teamsForMode(): TeamId[] {
+  return mode === 'duo' ? duoTeams() : soloTeams(TOTAL_PLAYERS);
+}
+
+const TEAM_LABELS = ['A', 'B', 'C', 'D'];
 
 const MS_PER_TICK = 1000 / TICK_RATE;
 /** 탭 전환 등으로 크게 밀렸을 때 따라잡기를 포기하는 한계 */
@@ -47,7 +64,10 @@ function renderStats(): void {
       if (p.skullTicks > 0) fx.push(SKULL_LABELS[p.skullKind] ?? '해골');
       if (p.needles > 0) fx.push(`바늘×${p.needles}`);
       const label = i < localCount ? `${i + 1}P` : 'BOT';
+      // 2v2에서는 누가 아군인지 한눈에 보여야 구출 플레이가 성립한다
+      const team = mode === 'duo' ? `<span class="team">${TEAM_LABELS[p.teamId]}</span>` : '';
       return `<span class="p${p.alive ? '' : ' dead'}">
+        ${team}
         <span class="name" style="color:${PLAYER_COLORS[i]}">${label}</span>
         <span>풍선 ${p.bubbleCapacity}</span>
         <span>파워 ${p.power}</span>
@@ -66,21 +86,54 @@ let bots: Bot[] = [];
 function spawnBots(): void {
   bots = [];
   for (let id = localCount; id < TOTAL_PLAYERS; id++) {
-    bots.push(createBot(id, seed * 31 + id * 7 + 1, BOT_PRESETS.normal));
+    bots.push(createBot(id, seed * 31 + id * 7 + 1, BOT_PRESETS[difficulty]));
   }
 }
 
 function newMatch(): void {
   seed = Math.floor(Math.random() * 0x7fffffff) || 1;
-  state = createInitialState({ seed, teams: soloTeams(TOTAL_PLAYERS) });
+  state = createInitialState({ seed, teams: teamsForMode() });
   viewport = createViewport(canvas!, state);
   spawnBots();
   if (seedEl) seedEl.textContent = String(seed);
+  syncSetup();
 }
 if (seedEl) seedEl.textContent = String(seed);
 spawnBots();
 
 const keyboard = new Keyboard(MAX_LOCAL);
+
+const setupEl = document.querySelector<HTMLElement>('#setup');
+
+/** 현재 설정에 맞춰 버튼 눌림 상태를 표시한다 */
+function syncSetup(): void {
+  const current: Record<string, string> = {
+    mode,
+    local: String(localCount),
+    difficulty,
+  };
+  setupEl?.querySelectorAll<HTMLButtonElement>('button[data-value]').forEach((btn) => {
+    const key = btn.closest<HTMLElement>('.group')?.dataset['key'];
+    if (!key) return;
+    btn.setAttribute('aria-pressed', String(current[key] === btn.dataset['value']));
+  });
+}
+
+setupEl?.addEventListener('click', (e) => {
+  const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>('button[data-value]');
+  const key = btn?.closest<HTMLElement>('.group')?.dataset['key'];
+  const value = btn?.dataset['value'];
+  if (!btn || !key || !value) return;
+
+  if (key === 'mode') mode = value as Mode;
+  if (key === 'local') localCount = Number(value);
+  if (key === 'difficulty') difficulty = value as Difficulty;
+
+  // 포커스가 남아 있으면 Space(물풍선)가 이 버튼을 다시 누른다
+  btn.blur();
+  newMatch();
+});
+syncSetup();
 
 window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyR') newMatch();

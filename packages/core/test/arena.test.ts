@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BOT_PRESETS, botInput, createBot, type BotConfig } from '../src/ai/bot.js';
 import { TICK_RATE } from '../src/constants.js';
-import { createInitialState, soloTeams } from '../src/map.js';
+import { createInitialState, duoTeams, soloTeams } from '../src/map.js';
 import { step } from '../src/sim.js';
+import { DRAW } from '../src/systems/victory.js';
 import { Phase, type InputFrame } from '../src/types.js';
 
 /**
@@ -17,10 +18,16 @@ interface MatchResult {
   finished: boolean;
   survivors: number;
   bubblesPlaced: number;
+  winnerTeamId: number | null;
 }
 
-function runBotMatch(seed: number, config: BotConfig, maxTicks: number): MatchResult {
-  const state = createInitialState({ seed, teams: soloTeams(4) });
+function runBotMatch(
+  seed: number,
+  config: BotConfig,
+  maxTicks: number,
+  teams: readonly number[] = soloTeams(4),
+): MatchResult {
+  const state = createInitialState({ seed, teams });
   const bots = state.players.map((p) => createBot(p.id, seed * 31 + p.id * 7 + 1, config));
 
   let bubblesPlaced = 0;
@@ -38,6 +45,7 @@ function runBotMatch(seed: number, config: BotConfig, maxTicks: number): MatchRe
     finished: state.phase === Phase.Over,
     survivors: state.players.filter((p) => p.alive).length,
     bubblesPlaced,
+    winnerTeamId: state.winnerTeamId,
   };
 }
 
@@ -97,6 +105,17 @@ describe('봇 대전', () => {
       if (runBotMatch(seed * 97, BOT_PRESETS.hard, MAX).survivors < 4) anyoneDied = true;
     }
     expect(anyoneDied).toBe(true);
+  });
+
+  it('2v2에서도 경기가 끝나고 한 팀이 이긴다', () => {
+    let teamWins = 0;
+    for (let seed = 1; seed <= 8; seed++) {
+      const r = runBotMatch(seed * 811, BOT_PRESETS.normal, MAX, duoTeams());
+      expect(r.finished).toBe(true);
+      // 승리 팀이 나왔다면 그 팀 소속만 남아야 한다
+      if (r.winnerTeamId !== null && r.winnerTeamId !== DRAW) teamWins++;
+    }
+    expect(teamWins).toBeGreaterThan(0);
   });
 
   it('봇은 초반(서든데스 전)에 자멸로 전멸하지 않는다', () => {

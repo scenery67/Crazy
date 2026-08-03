@@ -67,9 +67,67 @@
       #stats .fx {
         color: #ffd166;
       }
+      #stats .team {
+        padding: 0 5px;
+        border-radius: 4px;
+        background: rgb(255 255 255 / 0.1);
+        font-weight: 700;
+      }
+      #setup {
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
+      }
+      #setup .group {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+      }
+      #setup label {
+        opacity: 0.6;
+        margin-right: 4px;
+      }
+      #setup button {
+        font: inherit;
+        color: #cbd5e1;
+        background: rgb(255 255 255 / 0.06);
+        border: 1px solid transparent;
+        border-radius: 5px;
+        padding: 3px 10px;
+        cursor: pointer;
+      }
+      #setup button:hover {
+        background: rgb(255 255 255 / 0.12);
+      }
+      #setup button[aria-pressed='true'] {
+        color: #0e1420;
+        background: #8ac4ff;
+        border-color: #8ac4ff;
+        font-weight: 600;
+      }
     </style>
   </head>
   <body>
+    <div id="setup">
+      <span class="group" data-key="mode">
+        <label>모드</label>
+        <button type="button" data-value="solo">개인전</button>
+        <button type="button" data-value="duo">2v2</button>
+      </span>
+      <span class="group" data-key="local">
+        <label>사람</label>
+        <button type="button" data-value="1">1인</button>
+        <button type="button" data-value="2">2인</button>
+      </span>
+      <span class="group" data-key="difficulty">
+        <label>봇</label>
+        <button type="button" data-value="easy">쉬움</button>
+        <button type="button" data-value="normal">보통</button>
+        <button type="button" data-value="hard">어려움</button>
+      </span>
+    </div>
     <canvas id="game"></canvas>
     <div id="stats"></div>
     <div id="hud">
