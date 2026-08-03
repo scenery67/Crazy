@@ -38,6 +38,11 @@ jobs:
         working-directory: packages/client
         run: npx vite build --base="/${GITHUB_REPOSITORY#*/}/"
 
+      # 개인용 스프라이트는 gitignore돼 있어 CI 체크아웃에 애초에 없다.
+      # 그래도 배포물에 저작권 자산이 섞이는 사고는 되돌릴 수 없으므로 한 번 더 지운다
+      - name: 개인용 스프라이트 제거 (이중 안전장치)
+        run: rm -rf packages/client/dist/sprites
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: packages/client/dist

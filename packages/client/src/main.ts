@@ -14,6 +14,7 @@ import {
 } from '@crazy/core';
 import { Keyboard } from './input.js';
 import { createViewport, render, type Viewport } from './render.js';
+import { loadSprites, type SpriteSet } from './sprites.js';
 
 /** 키보드에 묶인 최대 인원. 0번=방향키, 1번=WASD */
 const MAX_LOCAL = 2;
@@ -80,8 +81,18 @@ function renderStats(): void {
 
 let seed = Math.floor(Math.random() * 0x7fffffff) || 1;
 let state: GameState = createInitialState({ seed, teams: soloTeams(TOTAL_PLAYERS) });
-let viewport: Viewport = createViewport(canvas, state);
+/**
+ * 스프라이트는 저장소에 없다(개인 사용 전용). 없으면 null이 되고
+ * 렌더러가 도형 모드로 그린다 — 공개 배포본이 이 경로를 탄다.
+ */
+let sprites: SpriteSet | null = null;
+let viewport: Viewport = createViewport(canvas, state, sprites);
 let bots: Bot[] = [];
+
+void loadSprites().then((loaded) => {
+  sprites = loaded;
+  viewport = createViewport(canvas, state, sprites);
+});
 
 function spawnBots(): void {
   bots = [];
@@ -93,7 +104,7 @@ function spawnBots(): void {
 function newMatch(): void {
   seed = Math.floor(Math.random() * 0x7fffffff) || 1;
   state = createInitialState({ seed, teams: teamsForMode() });
-  viewport = createViewport(canvas!, state);
+  viewport = createViewport(canvas!, state, sprites);
   spawnBots();
   if (seedEl) seedEl.textContent = String(seed);
   syncSetup();

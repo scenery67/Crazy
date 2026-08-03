@@ -12,12 +12,14 @@ import {
   Tile,
   WATER_DURATION,
   WaterKind,
+  type Dir,
   type GameState,
   type Player,
 } from '@crazy/core';
+import { drawFrame, type Sheet, type SpriteSet } from './sprites.js';
 
-/** 타일 하나를 그릴 픽셀 크기 */
-export const TILE_PX = 44;
+/** 원본 스프라이트가 52px 타일 기준이라 1:1로 맞춘다 */
+export const TILE_PX = 52;
 
 const PALETTE = {
   floorA: '#1b2a3a',
@@ -35,11 +37,19 @@ const PALETTE = {
   waterCore: '#ffffff',
 } as const;
 
-/** 플레이어 id별 고유색 */
 const PLAYER_COLORS = ['#ef5b5b', '#4fa3f7', '#5bd08a', '#f2c14e'] as const;
-/** 팀 색 — 개인전에서는 플레이어 색과 사실상 같아 보인다 */
 const TEAM_COLORS = ['#ff8a8a', '#8ac4ff', '#8ae8b4', '#ffdf8a'] as const;
 const TEAM_LABELS = ['A', 'B', 'C', 'D'] as const;
+
+const ITEM_COLORS: Record<number, string> = {
+  [ItemKind.Bubble]: '#2f7fb8',
+  [ItemKind.Power]: '#c9552f',
+  [ItemKind.Roller]: '#2f9e63',
+  [ItemKind.Needle]: '#6b7280',
+  [ItemKind.Potion]: '#7c4dbd',
+  [ItemKind.Skull]: '#4a4a55',
+  [ItemKind.Shield]: '#2f8fa8',
+};
 
 /** sub-unit 좌표 → 캔버스 픽셀 */
 function px(coord: number): number {
@@ -49,9 +59,15 @@ function px(coord: number): number {
 export interface Viewport {
   canvas: HTMLCanvasElement;
   ctx: CanvasRenderingContext2D;
+  /** null이면 도형 모드로 그린다 */
+  sprites: SpriteSet | null;
 }
 
-export function createViewport(canvas: HTMLCanvasElement, state: GameState): Viewport {
+export function createViewport(
+  canvas: HTMLCanvasElement,
+  state: GameState,
+  sprites: SpriteSet | null,
+): Viewport {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('2D 컨텍스트를 만들 수 없다');
 
@@ -64,24 +80,183 @@ export function createViewport(canvas: HTMLCanvasElement, state: GameState): Vie
   canvas.style.width = `${w}px`;
   canvas.style.height = `${h}px`;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.imageSmoothingEnabled = false;
 
-  return { canvas, ctx };
+  // 새 판에서는 이전 판의 위치 기억이 남아 있으면 안 된다
+  walkMemory.clear();
+
+  return { canvas, ctx, sprites };
 }
 
 /**
- * 상태를 읽기만 해서 그린다. 렌더러는 시뮬레이션을 절대 변경하지 않는다.
- * 보간(interpolation)은 나중에 이 레이어에서만 처리한다.
+ * 걷기 애니메이션을 위한 렌더러 전용 기억.
+ * 시뮬레이션에 "움직이는 중"이라는 상태가 없어서 위치 변화로 판단한다.
+ * 여기 있는 값은 게임 규칙에 전혀 영향을 주지 않는다.
  */
+const walkMemory = new Map<number, { x: number; y: number; anim: number; tick: number }>();
+
+function walkFrame(p: Player, tick: number): { frame: number; moving: boolean } {
+  const prev = walkMemory.get(p.id);
+  if (!prev) {
+    walkMemory.set(p.id, { x: p.x, y: p.y, anim: 0, tick });
+    return { frame: 0, moving: false };
+  }
+  const moving = prev.x !== p.x || prev.y !== p.y;
+  // 렌더는 화면 주사율대로 도니, 시뮬레이션이 진행된 틱에만 프레임을 넘긴다
+  if (tick !== prev.tick) {
+    if (moving) prev.anim++;
+    prev.x = p.x;
+    prev.y = p.y;
+    prev.tick = tick;
+  }
+  return { frame: Math.floor(prev.anim / 4), moving };
+}
+
 export function render(vp: Viewport, state: GameState): void {
-  const { ctx } = vp;
+  const { ctx, sprites } = vp;
   ctx.clearRect(0, 0, state.width * TILE_PX, state.height * TILE_PX);
 
-  drawTiles(ctx, state);
-  drawItems(ctx, state);
-  drawBubbles(ctx, state);
-  drawWaters(ctx, state);
-  drawPlayers(ctx, state);
+  if (sprites) renderSprites(ctx, state, sprites);
+  else renderShapes(ctx, state);
+
   if (state.phase === Phase.Over) drawResult(ctx, state);
+}
+
+// ─────────────────────────── 스프라이트 모드 ───────────────────────────
+
+interface Drawable {
+  /** 발밑 y. 이 값으로 정렬해야 앞뒤 가림이 맞는다 */
+  footY: number;
+  paint: () => void;
+}
+
+function renderSprites(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  sp: SpriteSet,
+): void {
+  // 1. 바닥은 전부 깔고 시작한다
+  for (let ty = 0; ty < state.height; ty++) {
+    for (let tx = 0; tx < state.width; tx++) {
+      ctx.drawImage(sp.floor.img, tx * TILE_PX, ty * TILE_PX, TILE_PX, TILE_PX);
+    }
+  }
+
+  // 2. 바닥에 놓인 것들
+  for (const item of state.items) {
+    const sheet = sp.items[item.kind];
+    const cx = (item.tx + 0.5) * TILE_PX;
+    const bob = Math.sin((state.tick + item.tx * 7 + item.ty * 13) / 18) * 2;
+    if (sheet) {
+      drawFrame(ctx, sheet, Math.floor(state.tick / 15), cx, (item.ty + 1) * TILE_PX + bob);
+    } else {
+      // 대응 그림이 없는 아이템(바늘·해골·방패)은 도형으로 그린다
+      drawItemGlyphTile(ctx, item.kind, cx, (item.ty + 0.5) * TILE_PX + bob);
+    }
+  }
+
+  for (const w of state.waters) {
+    const sheet = w.kind === WaterKind.Center ? sp.burst : pickWave(sp, w.kind, w.dir);
+    const progress = 1 - w.ticksLeft / WATER_DURATION;
+    drawFrame(
+      ctx,
+      sheet,
+      Math.floor(progress * sheet.frames),
+      (w.tx + 0.5) * TILE_PX,
+      (w.ty + 1) * TILE_PX,
+    );
+  }
+
+  // 3. 키 큰 것들은 발밑 순으로 정렬해서 그린다
+  const tall: Drawable[] = [];
+
+  for (let ty = 0; ty < state.height; ty++) {
+    for (let tx = 0; tx < state.width; tx++) {
+      const tile = state.map[ty * state.width + tx];
+      if (tile !== Tile.Hard && tile !== Tile.Soft) continue;
+      const sheet = tile === Tile.Hard ? sp.hardBlock : sp.softBlock;
+      const footY = (ty + 1) * TILE_PX;
+      tall.push({
+        footY,
+        paint: () => drawFrame(ctx, sheet, 0, (tx + 0.5) * TILE_PX, footY + 6),
+      });
+    }
+  }
+
+  for (const b of state.bubbles) {
+    const footY = (b.ty + 1) * TILE_PX;
+    // 터질 때가 가까울수록 빠르게 두근거린다
+    const urgency = 1 - Math.min(b.fuse, BUBBLE_FUSE) / BUBBLE_FUSE;
+    const speed = 14 - urgency * 9;
+    tall.push({
+      footY,
+      paint: () =>
+        drawFrame(ctx, sp.bomb, Math.floor(state.tick / speed), (b.tx + 0.5) * TILE_PX, footY + 4),
+    });
+  }
+
+  for (const p of state.players) {
+    if (!p.alive) continue;
+    const cx = px(p.x);
+    const footY = px(p.y) + TILE_PX * 0.42;
+    tall.push({ footY, paint: () => paintPlayer(ctx, state, sp, p, cx, footY) });
+  }
+
+  tall.sort((a, b) => a.footY - b.footY);
+  for (const d of tall) d.paint();
+}
+
+function pickWave(sp: SpriteSet, kind: WaterKind, dir: Dir | null): Sheet {
+  const d = (dir ?? 1) as Dir;
+  return kind === WaterKind.Tip ? sp.waveTip[d] : sp.waveArm[d];
+}
+
+function paintPlayer(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  sp: SpriteSet,
+  p: Player,
+  cx: number,
+  footY: number,
+): void {
+  const trapped = p.status === PlayerStatus.Trapped;
+  const blinking =
+    p.status === PlayerStatus.Invulnerable && Math.floor(state.tick / 4) % 2 === 0;
+
+  ctx.save();
+  if (blinking) ctx.globalAlpha = 0.45;
+
+  drawFrame(ctx, sp.shadow, 0, cx, footY + 6);
+
+  // 팀 표식 — 스프라이트가 전원 같은 캐릭터라 이게 없으면 아군을 구분할 수 없다
+  ctx.strokeStyle = TEAM_COLORS[p.teamId % TEAM_COLORS.length] ?? '#fff';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.ellipse(cx, footY + 2, TILE_PX * 0.3, TILE_PX * 0.13, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  if (trapped) {
+    drawFrame(ctx, sp.trap, Math.floor(state.tick / 12), cx, footY + 10);
+  } else {
+    const { frame, moving } = walkFrame(p, state.tick);
+    const sheet = moving ? sp.walk[p.facing] : sp.wait;
+    drawFrame(ctx, sheet, moving ? frame : Math.floor(state.tick / 20), cx, footY);
+  }
+
+  ctx.restore();
+
+  if (trapped) drawTrapGauges(ctx, p, cx, footY - TILE_PX * 0.55, TILE_PX * 0.5);
+  else drawEffects(ctx, state, p, cx, footY - TILE_PX * 0.5, TILE_PX * 0.42);
+}
+
+// ─────────────────────────── 도형 모드 (폴백) ───────────────────────────
+
+function renderShapes(ctx: CanvasRenderingContext2D, state: GameState): void {
+  drawTiles(ctx, state);
+  drawItemsAsShapes(ctx, state);
+  drawBubblesAsShapes(ctx, state);
+  drawWatersAsShapes(ctx, state);
+  drawPlayersAsShapes(ctx, state);
 }
 
 function drawTiles(ctx: CanvasRenderingContext2D, state: GameState): void {
@@ -91,7 +266,6 @@ function drawTiles(ctx: CanvasRenderingContext2D, state: GameState): void {
       const y = ty * TILE_PX;
       const tile = state.map[ty * state.width + tx];
 
-      // 바닥은 항상 먼저 깐다 — 블록이 파괴되면 그대로 드러난다
       ctx.fillStyle = (tx + ty) % 2 === 0 ? PALETTE.floorA : PALETTE.floorB;
       ctx.fillRect(x, y, TILE_PX, TILE_PX);
 
@@ -108,7 +282,6 @@ function drawTiles(ctx: CanvasRenderingContext2D, state: GameState): void {
   }
 }
 
-/** 윗면 하이라이트 + 몸통 + 외곽선으로 살짝 입체감을 준다 */
 function drawBlock(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -131,42 +304,38 @@ function drawBlock(
   ctx.strokeRect(x + inset + 1, y + inset + 1, w - 2, h - 2);
 }
 
-/** 아이템 종류별 배경색. 종류를 색으로 먼저 구분하고, 도형으로 확인시킨다 */
-const ITEM_COLORS: Record<number, string> = {
-  [ItemKind.Bubble]: '#2f7fb8',
-  [ItemKind.Power]: '#c9552f',
-  [ItemKind.Roller]: '#2f9e63',
-  [ItemKind.Needle]: '#6b7280',
-  [ItemKind.Potion]: '#7c4dbd',
-  [ItemKind.Skull]: '#4a4a55',
-  [ItemKind.Shield]: '#2f8fa8',
-};
-
-function drawItems(ctx: CanvasRenderingContext2D, state: GameState): void {
+function drawItemsAsShapes(ctx: CanvasRenderingContext2D, state: GameState): void {
   for (const item of state.items) {
-    // 살짝 위아래로 떠서 바닥 무늬와 구분된다
     const bob = Math.sin((state.tick + item.tx * 7 + item.ty * 13) / 18) * 2;
-    const cx = (item.tx + 0.5) * TILE_PX;
-    const cy = (item.ty + 0.5) * TILE_PX + bob;
-    const half = TILE_PX * 0.3;
-
-    ctx.fillStyle = 'rgb(0 0 0 / 0.3)';
-    ctx.beginPath();
-    ctx.ellipse(cx, (item.ty + 0.5) * TILE_PX + half + 4, half * 0.8, half * 0.28, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = ITEM_COLORS[item.kind] ?? '#888';
-    roundRect(ctx, cx - half, cy - half, half * 2, half * 2, 5);
-    ctx.fill();
-    ctx.strokeStyle = 'rgb(255 255 255 / 0.35)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2;
-    drawItemGlyph(ctx, item.kind, cx, cy, half);
+    drawItemGlyphTile(ctx, item.kind, (item.tx + 0.5) * TILE_PX, (item.ty + 0.5) * TILE_PX + bob);
   }
+}
+
+/** 색 배경 + 도형 하나로 아이템을 그린다 */
+function drawItemGlyphTile(
+  ctx: CanvasRenderingContext2D,
+  kind: number,
+  cx: number,
+  cy: number,
+): void {
+  const half = TILE_PX * 0.3;
+
+  ctx.fillStyle = 'rgb(0 0 0 / 0.3)';
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + half + 4, half * 0.8, half * 0.28, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = ITEM_COLORS[kind] ?? '#888';
+  roundRect(ctx, cx - half, cy - half, half * 2, half * 2, 5);
+  ctx.fill();
+  ctx.strokeStyle = 'rgb(255 255 255 / 0.35)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 2;
+  drawItemGlyph(ctx, kind, cx, cy, half);
 }
 
 function drawItemGlyph(
@@ -183,7 +352,6 @@ function drawItemGlyph(
       ctx.fill();
       break;
     case ItemKind.Power:
-      // 바깥으로 뻗는 십자 — 물줄기가 길어진다는 뜻
       ctx.beginPath();
       ctx.moveTo(cx - r * 0.62, cy);
       ctx.lineTo(cx + r * 0.62, cy);
@@ -192,7 +360,6 @@ function drawItemGlyph(
       ctx.stroke();
       break;
     case ItemKind.Roller:
-      // 진행 방향 갈매기 두 개
       for (const dx of [-r * 0.34, r * 0.14]) {
         ctx.beginPath();
         ctx.moveTo(cx + dx, cy - r * 0.42);
@@ -263,12 +430,11 @@ function roundRect(
   ctx.closePath();
 }
 
-function drawBubbles(ctx: CanvasRenderingContext2D, state: GameState): void {
+function drawBubblesAsShapes(ctx: CanvasRenderingContext2D, state: GameState): void {
   for (const b of state.bubbles) {
     const cx = (b.tx + 0.5) * TILE_PX;
     const cy = (b.ty + 0.5) * TILE_PX;
 
-    // 터질 때가 가까울수록 빠르게 두근거린다 — 남은 시간을 소리 없이 알려준다
     const urgency = 1 - Math.min(b.fuse, BUBBLE_FUSE) / BUBBLE_FUSE;
     const period = 26 - urgency * 18;
     const pulse = Math.sin((state.tick / period) * Math.PI * 2) * (0.05 + urgency * 0.09);
@@ -288,7 +454,6 @@ function drawBubbles(ctx: CanvasRenderingContext2D, state: GameState): void {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 하이라이트
     ctx.fillStyle = 'rgb(255 255 255 / 0.55)';
     ctx.beginPath();
     ctx.arc(cx - r * 0.32, cy - r * 0.34, r * 0.2, 0, Math.PI * 2);
@@ -296,11 +461,10 @@ function drawBubbles(ctx: CanvasRenderingContext2D, state: GameState): void {
   }
 }
 
-function drawWaters(ctx: CanvasRenderingContext2D, state: GameState): void {
+function drawWatersAsShapes(ctx: CanvasRenderingContext2D, state: GameState): void {
   for (const w of state.waters) {
     const x = w.tx * TILE_PX;
     const y = w.ty * TILE_PX;
-    // 끝날 때 서서히 옅어진다
     const life = w.ticksLeft / WATER_DURATION;
     const alpha = Math.min(1, life * 1.8);
 
@@ -333,7 +497,7 @@ function isHorizontal(dir: number | null): boolean {
   return dx !== 0;
 }
 
-function drawPlayers(ctx: CanvasRenderingContext2D, state: GameState): void {
+function drawPlayersAsShapes(ctx: CanvasRenderingContext2D, state: GameState): void {
   for (const p of state.players) {
     if (!p.alive) continue;
 
@@ -341,8 +505,8 @@ function drawPlayers(ctx: CanvasRenderingContext2D, state: GameState): void {
     const cy = px(p.y);
     const r = px(PLAYER_HITBOX) / 2;
 
-    // 무적 중에는 깜빡인다
-    const blinking = p.status === PlayerStatus.Invulnerable && Math.floor(state.tick / 4) % 2 === 0;
+    const blinking =
+      p.status === PlayerStatus.Invulnerable && Math.floor(state.tick / 4) % 2 === 0;
     ctx.save();
     if (blinking) ctx.globalAlpha = 0.4;
 
@@ -379,11 +543,68 @@ function drawPlayers(ctx: CanvasRenderingContext2D, state: GameState): void {
   }
 }
 
+function drawTrapBubble(
+  ctx: CanvasRenderingContext2D,
+  p: Player,
+  cx: number,
+  cy: number,
+  r: number,
+): void {
+  const outer = r * 1.15;
+
+  ctx.fillStyle = 'rgb(127 227 255 / 0.22)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, outer, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgb(168 228 255 / 0.85)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgb(255 255 255 / 0.6)';
+  ctx.beginPath();
+  ctx.arc(cx - outer * 0.35, cy - outer * 0.38, outer * 0.16, 0, Math.PI * 2);
+  ctx.fill();
+
+  drawTrapGauges(ctx, p, cx, cy, outer);
+}
+
+// ─────────────────────────── 공통 오버레이 ───────────────────────────
+
 /**
- * 일시 효과 표시.
- * 물약과 해골은 능력치를 크게 바꾸는데, 표시가 없으면
- * 플레이어는 자기 물줄기가 왜 짧아졌는지 알 방법이 없다.
+ * 남은 시간(줄어드는 호)과 탈출 게이지(차오르는 호).
+ * 이 둘이 안 보이면 플레이어는 언제 죽는지, 연타가 먹히는지 알 수 없다.
  */
+function drawTrapGauges(
+  ctx: CanvasRenderingContext2D,
+  p: Player,
+  cx: number,
+  cy: number,
+  radius: number,
+): void {
+  const remain = p.statusTicks / TRAP_DURATION;
+  ctx.strokeStyle = remain < 0.3 ? '#ff6b6b' : '#ffd166';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * remain);
+  ctx.stroke();
+
+  if (p.escapeGauge > 0) {
+    ctx.strokeStyle = '#8ae8b4';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(
+      cx,
+      cy,
+      radius + 7,
+      Math.PI / 2,
+      Math.PI / 2 + Math.PI * 2 * Math.min(1, p.escapeGauge / ESCAPE_THRESHOLD),
+    );
+    ctx.stroke();
+  }
+}
+
+/** 물약·해골은 능력치를 크게 바꾸는데, 표시가 없으면 원인을 알 수 없다 */
 function drawEffects(
   ctx: CanvasRenderingContext2D,
   state: GameState,
@@ -410,58 +631,6 @@ function drawEffects(
   }
 }
 
-/**
- * 갇힌 상태 표시.
- * 남은 시간(줄어드는 호)과 탈출 게이지(차오르는 호)를 함께 보여준다.
- * 이 둘이 안 보이면 플레이어는 언제 죽는지, 연타가 먹히는지 알 수 없다.
- */
-function drawTrapBubble(
-  ctx: CanvasRenderingContext2D,
-  p: Player,
-  cx: number,
-  cy: number,
-  r: number,
-): void {
-  const outer = r * 1.15;
-
-  ctx.fillStyle = 'rgb(127 227 255 / 0.22)';
-  ctx.beginPath();
-  ctx.arc(cx, cy, outer, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.strokeStyle = 'rgb(168 228 255 / 0.85)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.fillStyle = 'rgb(255 255 255 / 0.6)';
-  ctx.beginPath();
-  ctx.arc(cx - outer * 0.35, cy - outer * 0.38, outer * 0.16, 0, Math.PI * 2);
-  ctx.fill();
-
-  // 남은 시간 — 시계 방향으로 줄어든다
-  const remain = p.statusTicks / TRAP_DURATION;
-  ctx.strokeStyle = remain < 0.3 ? '#ff6b6b' : '#ffd166';
-  ctx.lineWidth = 3;
-  ctx.beginPath();
-  ctx.arc(cx, cy, outer + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * remain);
-  ctx.stroke();
-
-  // 탈출 게이지 — 연타할수록 차오른다
-  if (p.escapeGauge > 0) {
-    ctx.strokeStyle = '#8ae8b4';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(
-      cx,
-      cy,
-      outer + 7,
-      Math.PI / 2,
-      Math.PI / 2 + Math.PI * 2 * Math.min(1, p.escapeGauge / ESCAPE_THRESHOLD),
-    );
-    ctx.stroke();
-  }
-}
-
 function drawResult(ctx: CanvasRenderingContext2D, state: GameState): void {
   const w = state.width * TILE_PX;
   const h = state.height * TILE_PX;
@@ -481,7 +650,9 @@ function drawResult(ctx: CanvasRenderingContext2D, state: GameState): void {
 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillStyle = draw ? '#cbd5e1' : (TEAM_COLORS[state.winnerTeamId! % TEAM_COLORS.length] ?? '#fff');
+  ctx.fillStyle = draw
+    ? '#cbd5e1'
+    : (TEAM_COLORS[state.winnerTeamId! % TEAM_COLORS.length] ?? '#fff');
   ctx.font = '600 34px ui-sans-serif, system-ui, sans-serif';
   ctx.fillText(label, w / 2, h / 2 - 12);
 
