@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-types/
+*.tsbuildinfo
+.vite/
+.DS_Store
+
+# 로컬 전용 도구 설정
+.claude/settings.local.json

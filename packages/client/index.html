@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>크레이지 아케이드</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+      }
+      body {
+        display: grid;
+        place-items: center;
+        gap: 12px;
+        grid-auto-rows: min-content;
+        align-content: center;
+        background: #0e1420;
+        color: #cbd5e1;
+        font: 13px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+      }
+      canvas {
+        display: block;
+        border-radius: 8px;
+        box-shadow: 0 12px 40px rgb(0 0 0 / 0.5);
+        max-width: 100%;
+        height: auto;
+        image-rendering: pixelated;
+      }
+      #hud {
+        display: flex;
+        gap: 16px;
+        opacity: 0.75;
+      }
+      #hud b {
+        color: #e2e8f0;
+        font-weight: 600;
+      }
+      #stats {
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      #stats .p {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        padding: 4px 10px;
+        border-radius: 6px;
+        background: rgb(255 255 255 / 0.04);
+      }
+      #stats .name {
+        font-weight: 700;
+      }
+      #stats .dead {
+        opacity: 0.35;
+        text-decoration: line-through;
+      }
+      #stats .fx {
+        color: #ffd166;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="stats"></div>
+    <div id="hud">
+      <span>tick <b id="tick">0</b></span>
+      <span>fps <b id="fps">0</b></span>
+      <span>생존 <b id="alive">4</b></span>
+      <span>서든데스 <b id="phase">-</b></span>
+      <span>seed <b id="seed">-</b></span>
+      <span><b>방향키 + Space</b> 1P</span>
+      <span><b>WASD + F</b> 2P</span>
+      <span><b>1/2</b> 사람 수</span>
+      <span><b>R</b> 새 판</span>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

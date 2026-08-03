@@ -1,0 +1,53 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포는 한 번에 하나만. 밀린 실행은 최신 것만 남긴다
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # 시뮬레이션이 깨진 채로 배포되지 않게 막는다
+      - run: npm run typecheck
+      - run: npm test
+
+      # 프로젝트 페이지는 /<저장소이름>/ 아래에 놓이므로 base를 맞춰야
+      # 에셋 경로가 깨지지 않는다. 사용자/조직 페이지(<id>.github.io)라면 "/"로 바꾼다
+      - name: Build
+        working-directory: packages/client
+        run: npx vite build --base="/${GITHUB_REPOSITORY#*/}/"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: packages/client/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
