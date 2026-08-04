@@ -16,7 +16,7 @@ import {
   type GameState,
   type Player,
 } from '@crazy/core';
-import { CHAR_ROW, drawFrame, type Sheet, type SpriteSet } from './sprites.js';
+import { CHAR_ROW, CHAR_SCALE, drawFrame, type Sheet, type SpriteSet } from './sprites.js';
 
 /** 원본 스프라이트가 52px 타일 기준이라 1:1로 맞춘다 */
 export const TILE_PX = 52;
@@ -137,11 +137,14 @@ function walkPose(p: Player, tick: number): WalkPose {
   };
 }
 
-export function render(vp: Viewport, state: GameState): void {
+/**
+ * @param localIds 사람이 잡고 있는 자리. 이쪽만 사용자 캐릭터로 그린다
+ */
+export function render(vp: Viewport, state: GameState, localIds: ReadonlySet<number>): void {
   const { ctx, sprites } = vp;
   ctx.clearRect(0, 0, state.width * TILE_PX, state.height * TILE_PX);
 
-  if (sprites) renderSprites(ctx, state, sprites);
+  if (sprites) renderSprites(ctx, state, sprites, localIds);
   else renderShapes(ctx, state);
 
   if (state.phase === Phase.Over) drawResult(ctx, state);
@@ -159,6 +162,7 @@ function renderSprites(
   ctx: CanvasRenderingContext2D,
   state: GameState,
   sp: SpriteSet,
+  localIds: ReadonlySet<number>,
 ): void {
   // 1. 바닥은 전부 깔고 시작한다
   for (let ty = 0; ty < state.height; ty++) {
@@ -224,7 +228,7 @@ function renderSprites(
     if (!p.alive) continue;
     const cx = px(p.x);
     const footY = px(p.y) + TILE_PX * 0.42;
-    tall.push({ footY, paint: () => paintPlayer(ctx, state, sp, p, cx, footY) });
+    tall.push({ footY, paint: () => paintPlayer(ctx, state, sp, p, cx, footY, localIds.has(p.id)) });
   }
 
   tall.sort((a, b) => a.footY - b.footY);
@@ -243,6 +247,7 @@ function paintPlayer(
   p: Player,
   cx: number,
   footY: number,
+  isLocal: boolean,
 ): void {
   const trapped = p.status === PlayerStatus.Trapped;
   const blinking =
@@ -264,9 +269,14 @@ function paintPlayer(
     drawFrame(ctx, sp.trap, Math.floor(state.tick / 12), cx, footY + 10);
   } else {
     const pose = walkPose(p, state.tick);
-    const sheet = sp.chars[p.id % sp.chars.length] ?? sp.chars[0]!;
     // 멈춰도 바라보던 방향을 유지한다. 정면으로 되돌리면 방향이 튕겨 보인다
-    drawFrame(ctx, sheet, pose.moving ? pose.frame : 0, cx, footY, CHAR_ROW[p.facing]);
+    const frame = pose.moving ? pose.frame : 0;
+    if (isLocal) {
+      drawFrame(ctx, sp.hero[p.facing], frame, cx, footY);
+    } else {
+      const sheet = sp.chars[p.id % sp.chars.length] ?? sp.chars[0]!;
+      drawFrame(ctx, sheet, frame, cx, footY, CHAR_ROW[p.facing], CHAR_SCALE);
+    }
   }
 
   ctx.restore();

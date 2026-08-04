@@ -30,7 +30,17 @@ export const CHAR_ROW: Record<Dir, number> = {
   [Dir.Down]: 3,
 };
 
+/**
+ * 봇 캐릭터 시트는 프레임이 44x62 / 42x57로, 사용자 캐릭터(64x76)보다 작다.
+ * 그대로 두면 같은 판에서 봇만 작아 보이므로 키를 맞춘다.
+ */
+export const CHAR_SCALE = 1.3;
+
 export interface SpriteSet {
+  /** 사람이 잡는 자리. 방향별로 시트가 따로 있고 크다(64x76) */
+  hero: Record<Dir, Sheet>;
+  /** 봇 자리. 8열(프레임) x 4행(방향) 한 장짜리 시트 */
+  chars: Sheet[];
   trap: Sheet;
   shadow: Sheet;
   bomb: Sheet;
@@ -43,8 +53,6 @@ export interface SpriteSet {
   hardBlock: Sheet;
   softBlock: Sheet;
   softPop: Sheet;
-  /** 자리(playerId)별 캐릭터. 줄이 방향이다 */
-  chars: Sheet[];
   /** 대응하는 그림이 없는 아이템은 비어 있고, 렌더러가 도형으로 그린다 */
   items: Partial<Record<ItemKind, Sheet>>;
 }
@@ -59,6 +67,10 @@ const S = (path: string, frames = 1, rows = 1): Spec => ({ path, frames, rows })
 
 /** 프레임 수는 원본 프로젝트의 imageManager 등록값과 같다 */
 const SPECS = {
+  heroUp: S('player/bazzi/up.png', 8),
+  heroDown: S('player/bazzi/down.png', 8),
+  heroLeft: S('player/bazzi/left.png', 6),
+  heroRight: S('player/bazzi/right.png', 6),
   trap: S('player/bazzi/trap.png', 13),
   shadow: S('player/shadow.png'),
   bomb: S('bomb/1.png', 4),
@@ -79,7 +91,7 @@ const SPECS = {
   itemPower: S('item/potion.png', 2),
   itemRoller: S('item/skate.png', 2),
   itemPotion: S('item/potion_make_power_max.png', 2),
-  // 자리마다 다른 캐릭터를 준다. 전원이 같은 모습이면 내가 누군지 알 수 없다
+  // 봇 자리마다 다른 캐릭터를 준다. 전원이 같은 모습이면 누가 누군지 알 수 없다
   char0: S('chars/RedBazzi.png', 8, 4),
   char1: S('chars/BlueBazzi.png', 8, 4),
   char2: S('chars/RedDizni.png', 8, 4),
@@ -119,6 +131,12 @@ export async function loadSprites(): Promise<SpriteSet | null> {
   const at = (key: SpecKey): Sheet => loaded[keys.indexOf(key)]!;
 
   return {
+    hero: {
+      [Dir.Up]: at('heroUp'),
+      [Dir.Down]: at('heroDown'),
+      [Dir.Left]: at('heroLeft'),
+      [Dir.Right]: at('heroRight'),
+    },
     trap: at('trap'),
     shadow: at('shadow'),
     bomb: at('bomb'),

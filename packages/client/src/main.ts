@@ -42,6 +42,17 @@ function teamsForMode(): TeamId[] {
 
 const TEAM_LABELS = ['A', 'B', 'C', 'D'];
 
+/**
+ * 사람이 잡고 있는 자리. 렌더러가 사용자 캐릭터와 봇 캐릭터를 갈라 그리는 데 쓴다.
+ * 온라인에서는 내 자리 하나뿐이고, 관전 중이면 비어 있다.
+ */
+function localPlayerIds(): ReadonlySet<number> {
+  if (online.isLive) {
+    return online.playerId === null ? new Set() : new Set([online.playerId]);
+  }
+  return new Set(Array.from({ length: localCount }, (_, i) => i));
+}
+
 const MS_PER_TICK = 1000 / TICK_RATE;
 /** 탭 전환 등으로 크게 밀렸을 때 따라잡기를 포기하는 한계 */
 const MAX_CATCHUP_TICKS = 5;
@@ -255,7 +266,7 @@ function frame(now: number): void {
   if (ticksThisFrame >= MAX_CATCHUP_TICKS) accumulator = 0;
 
   const shown = online.isLive ? (online.view(now) ?? state) : state;
-  render(viewport, shown);
+  render(viewport, shown, localPlayerIds());
 
   fpsCounter++;
   fpsTimer += delta;
