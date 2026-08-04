@@ -29,9 +29,6 @@ export const WATER_DURATION = 30; // 0.5초
 export const TRAP_DURATION = 300; // 5.0초
 export const INVULN_DURATION = 60; // 1.0초
 
-/** 트랩 중 방향키 연타 횟수 */
-export const ESCAPE_THRESHOLD = 12;
-
 /**
  * 갇힌 직후 이 틱 동안은 물줄기가 닿아도 구출되지 않는다.
  *

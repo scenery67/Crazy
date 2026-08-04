@@ -115,7 +115,6 @@ function createPlayer(id: number, teamId: TeamId): Player {
     facing: ty === 1 ? Dir.Down : Dir.Up,
     status: PlayerStatus.Normal,
     statusTicks: 0,
-    escapeGauge: 0,
     bubbleCapacity: 1,
     bubblesPlaced: 0,
     power: 1,

@@ -28,16 +28,21 @@ const WANDER_HOLD_RANGE = 35;
 export interface BotConfig {
   /** 기회가 왔을 때 실제로 물풍선을 놓을 확률 (%) */
   aggression: number;
-  /** 탈출 경로 확인을 건너뛸 확률 (%). 난이도를 낮추는 유일한 손잡이 */
+  /** 탈출 경로 확인을 건너뛸 확률 (%) */
   recklessness: number;
-  /** 갇혔을 때 방향을 바꾸는 간격(틱). 1이면 최대 속도로 연타 */
-  mashInterval: number;
+  /**
+   * 위험을 알아차리기까지 걸리는 틱. 난이도의 핵심 손잡이다.
+   *
+   * 자력 탈출을 없앤 뒤로 갇히면 곧 죽음이라, "얼마나 늦게 도망치는가"가
+   * 곧 생존율이 된다. 설치 적극성만으로는 난이도 차이가 나지 않았다.
+   */
+  reactionTicks: number;
 }
 
 export const BOT_PRESETS = {
-  easy: { aggression: 35, recklessness: 25, mashInterval: 4 },
-  normal: { aggression: 60, recklessness: 6, mashInterval: 2 },
-  hard: { aggression: 85, recklessness: 0, mashInterval: 1 },
+  easy: { aggression: 35, recklessness: 25, reactionTicks: 20 },
+  normal: { aggression: 60, recklessness: 6, reactionTicks: 8 },
+  hard: { aggression: 85, recklessness: 0, reactionTicks: 0 },
 } as const satisfies Record<string, BotConfig>;
 
 export interface Bot {
@@ -57,6 +62,8 @@ export interface Bot {
    * 갈 곳이 없어 배회할 때 매 타일마다 방향을 새로 뽑으면 제자리에서 떨린다.
    */
   holdTicks: number;
+  /** 위험을 알아차리기까지 남은 틱 */
+  dangerDelay: number;
 }
 
 /** 정반대 방향. 되꺾기를 막는 데 쓴다 */
@@ -84,6 +91,7 @@ export function createBot(
     lastY: -1,
     stuckTicks: 0,
     holdTicks: 0,
+    dangerDelay: config.reactionTicks,
   };
 }
 
@@ -98,12 +106,8 @@ export function botInput(state: GameState, bot: Bot): InputFrame {
   const p = state.players.find((pl) => pl.id === bot.playerId);
   if (!p || !p.alive) return idle;
 
-  // 갇혔으면 탈출 연타가 최우선이다.
-  // 게이지는 방향을 '바꿀 때'만 오르므로 같은 방향을 계속 눌러선 안 된다
-  if (p.status === PlayerStatus.Trapped) {
-    const phase = Math.floor(state.tick / Math.max(1, bot.config.mashInterval)) % 2;
-    return { playerId: bot.playerId, move: phase === 0 ? Dir.Left : Dir.Right, placeBubble: false };
-  }
+  // 갇히면 혼자 힘으로는 나올 수 없다. 아군이 오기를 기다릴 뿐이다
+  if (p.status === PlayerStatus.Trapped) return idle;
 
   const [tx, ty] = playerTile(p);
   const here = ty * state.width + tx;
@@ -118,17 +122,22 @@ export function botInput(state: GameState, bot: Bot): InputFrame {
   if (bot.holdTicks > 0) bot.holdTicks--;
   const stuck = bot.stuckTicks >= STUCK_LIMIT;
 
+  // 위험을 곧바로 알아차리지 못한다. 이 지연이 난이도를 만든다
+  if (!inDanger) bot.dangerDelay = bot.config.reactionTicks;
+  else if (bot.dangerDelay > 0) bot.dangerDelay--;
+  const alarmed = inDanger && bot.dangerDelay === 0;
+
   const needsPlan =
     bot.dir === null ||
-    inDanger !== bot.lastInDanger ||
+    alarmed !== bot.lastInDanger ||
     stuck ||
     (here !== bot.lastTile && bot.holdTicks === 0);
 
   if (needsPlan) {
     bot.lastTile = here;
-    bot.lastInDanger = inDanger;
+    bot.lastInDanger = alarmed;
     bot.stuckTicks = 0;
-    replan(state, p, bot, danger, tx, ty, ticksPerTile, inDanger, stuck);
+    replan(state, p, bot, danger, tx, ty, ticksPerTile, alarmed, stuck);
   }
 
   const placeBubble = bot.placeNext;

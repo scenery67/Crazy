@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ESCAPE_THRESHOLD,
   INVULN_DURATION,
   RESCUE_GRACE,
   TRAP_DURATION,
@@ -80,12 +79,23 @@ describe('구출', () => {
     expect(s.players[0]!.alive).toBe(true);
   });
 
-  it('적의 물줄기여도 구출된다 (소유자 무관)', () => {
+  it('적의 물줄기는 풀어주지 않는다', () => {
     const s = duel();
     forceTrap(s.players[0]!);
     stepMany(s, RESCUE_GRACE + 1, () => idle);
 
     addWater(s, 1, 1, 1); // 상대(1번)의 물줄기
+    step(s, idle);
+    expect(s.players[0]!.status).toBe(PlayerStatus.Trapped);
+  });
+
+  it('아군의 물줄기는 풀어준다', () => {
+    const s = duel();
+    s.players[1]!.teamId = s.players[0]!.teamId; // 같은 팀으로
+    forceTrap(s.players[0]!);
+    stepMany(s, RESCUE_GRACE + 1, () => idle);
+
+    addWater(s, 1, 1, 1); // 아군(1번)의 물줄기
     step(s, idle);
     expect(s.players[0]!.status).toBe(PlayerStatus.Invulnerable);
   });
@@ -103,27 +113,23 @@ describe('구출', () => {
   });
 });
 
-describe('자력 탈출', () => {
-  it('방향을 번갈아 누르면 게이지가 차서 탈출한다', () => {
+describe('혼자 힘으로는 나올 수 없다', () => {
+  /**
+   * 연타로 탈출하게 두었더니 아무도 죽지 않아서 가두는 행위가 무의미해졌다.
+   * 갇히면 팀에 기대야 한다는 것이 이 게임을 팀 게임으로 만든다.
+   */
+  it('방향키를 아무리 연타해도 풀려나지 않는다', () => {
     const s = duel();
     forceTrap(s.players[0]!);
 
     const alternate = (tick: number): InputFrame[] => [
       { playerId: 0, move: tick % 2 === 0 ? Dir.Left : Dir.Right, placeBubble: false },
     ];
-    stepMany(s, ESCAPE_THRESHOLD + 2, alternate);
-
-    expect(s.players[0]!.status).toBe(PlayerStatus.Invulnerable);
-    expect(s.players[0]!.alive).toBe(true);
-  });
-
-  it('같은 방향만 누르고 있으면 게이지가 차지 않는다', () => {
-    const s = duel();
-    forceTrap(s.players[0]!);
-
-    stepMany(s, 100, () => [{ playerId: 0, move: Dir.Left, placeBubble: false }]);
+    stepMany(s, TRAP_DURATION - 5, alternate);
     expect(s.players[0]!.status).toBe(PlayerStatus.Trapped);
-    expect(s.players[0]!.escapeGauge).toBe(1); // 최초 전환 1회뿐
+
+    stepMany(s, 10, alternate);
+    expect(s.players[0]!.alive).toBe(false);
   });
 
   it('갇힌 동안에는 움직일 수 없다', () => {

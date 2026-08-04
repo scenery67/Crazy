@@ -99,8 +99,6 @@ export interface Player {
   status: PlayerStatus;
   /** 현재 status의 남은 틱 수. Normal일 때는 0 */
   statusTicks: number;
-  /** 트랩 중 방향키 연타로 쌓는 탈출 게이지 */
-  escapeGauge: number;
 
   bubbleCapacity: number;
   bubblesPlaced: number;

@@ -2,7 +2,6 @@ import {
   BUBBLE_FUSE,
   DIR_VECTORS,
   DRAW,
-  ESCAPE_THRESHOLD,
   ItemKind,
   PLAYER_HITBOX,
   Phase,
@@ -628,8 +627,8 @@ function drawTrapBubble(
 // ─────────────────────────── 공통 오버레이 ───────────────────────────
 
 /**
- * 남은 시간(줄어드는 호)과 탈출 게이지(차오르는 호).
- * 이 둘이 안 보이면 플레이어는 언제 죽는지, 연타가 먹히는지 알 수 없다.
+ * 죽기까지 남은 시간(줄어드는 호).
+ * 혼자서는 나올 수 없으므로, 이 호는 아군에게 "얼마나 급한가"를 알리는 신호다.
  */
 function drawTrapGauges(
   ctx: CanvasRenderingContext2D,
@@ -644,20 +643,6 @@ function drawTrapGauges(
   ctx.beginPath();
   ctx.arc(cx, cy, radius + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * remain);
   ctx.stroke();
-
-  if (p.escapeGauge > 0) {
-    ctx.strokeStyle = '#8ae8b4';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.arc(
-      cx,
-      cy,
-      radius + 7,
-      Math.PI / 2,
-      Math.PI / 2 + Math.PI * 2 * Math.min(1, p.escapeGauge / ESCAPE_THRESHOLD),
-    );
-    ctx.stroke();
-  }
 }
 
 /** 물약·해골은 능력치를 크게 바꾸는데, 표시가 없으면 원인을 알 수 없다 */

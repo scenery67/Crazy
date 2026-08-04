@@ -33,7 +33,7 @@ export function step(state: GameState, inputs: readonly InputFrame[]): GameState
   applyExplosions(state);
   // 아이템은 트랩보다 먼저다 — 방패를 밟은 그 틱에 곧바로 보호받아야 한다
   applyItems(state);
-  applyTrap(state, byPlayer);
+  applyTrap(state);
   applySuddenDeath(state);
   applyVictory(state);
 

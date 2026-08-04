@@ -50,7 +50,6 @@ function makePlayer(id: PlayerId, tx: number, ty: number): Player {
     facing: Dir.Down,
     status: PlayerStatus.Normal,
     statusTicks: 0,
-    escapeGauge: 0,
     bubbleCapacity: 1,
     bubblesPlaced: 0,
     power: 1,
@@ -111,7 +110,6 @@ export function addWater(state: GameState, tx: number, ty: number, ownerId: Play
 export function forceTrap(p: Player): void {
   p.status = PlayerStatus.Trapped;
   p.statusTicks = TRAP_DURATION;
-  p.escapeGauge = 0;
 }
 
 export function waterAt(state: GameState, tx: number, ty: number): boolean {

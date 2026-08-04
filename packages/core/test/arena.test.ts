@@ -23,12 +23,14 @@ interface MatchResult {
 
 function runBotMatch(
   seed: number,
-  config: BotConfig,
+  config: BotConfig | readonly BotConfig[],
   maxTicks: number,
   teams: readonly number[] = soloTeams(4),
 ): MatchResult {
   const state = createInitialState({ seed, teams });
-  const bots = state.players.map((p) => createBot(p.id, seed * 31 + p.id * 7 + 1, config));
+  const bots = state.players.map((p) =>
+    createBot(p.id, seed * 31 + p.id * 7 + 1, Array.isArray(config) ? config[p.id]! : (config as BotConfig)),
+  );
 
   let bubblesPlaced = 0;
   let ticks = 0;
@@ -87,10 +89,33 @@ describe('봇 대전', () => {
     expect(stats.avgBubbles).toBeGreaterThan(10);
   });
 
-  it('hard 봇이 easy 봇보다 오래 산다', () => {
-    const easy = summarize(BOT_PRESETS.easy, 12, MAX);
-    const hard = summarize(BOT_PRESETS.hard, 12, MAX);
-    expect(hard.avgTicks).toBeGreaterThan(easy.avgTicks);
+  /**
+   * 난이도는 "같은 판에서 누가 이기는가"로 재야 한다.
+   *
+   * 예전에는 난이도별로 따로 돌려 경기 길이를 비교했는데, 자력 탈출을 없앤 뒤로는
+   * 공격성이 곧바로 킬로 이어져서 **센 봇끼리 붙으면 경기가 더 빨리 끝난다.**
+   * 경기 길이는 실력이 아니라 결판 속도를 재는 값이었다.
+   */
+  it('같은 판에서 hard 봇이 easy 봇보다 많이 이긴다', () => {
+    let hardWins = 0;
+    let easyWins = 0;
+
+    for (let seed = 1; seed <= 24; seed++) {
+      // 스폰 자리에 따른 유불리를 없애려고 시드마다 자리를 바꾼다
+      const hardFirst = seed % 2 === 0;
+      const configs = [0, 1, 2, 3].map((id) =>
+        (id < 2) === hardFirst ? BOT_PRESETS.hard : BOT_PRESETS.easy,
+      );
+
+      const r = runBotMatch(seed * 1013, configs, MAX);
+      if (r.winnerTeamId === null || r.winnerTeamId === DRAW) continue;
+      // 개인전이라 teamId가 곧 자리 번호다
+      const winnerIsHard = (r.winnerTeamId < 2) === hardFirst;
+      if (winnerIsHard) hardWins++;
+      else easyWins++;
+    }
+
+    expect(hardWins).toBeGreaterThan(easyWins);
   });
 
   it('대전은 결정론적이다 — 같은 시드는 같은 결과', () => {
