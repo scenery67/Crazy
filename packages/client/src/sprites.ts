@@ -101,9 +101,11 @@ const SPECS = {
   itemPower: S('item/potion.png', 2),
   itemRoller: S('item/skate.png', 2),
   itemPotion: S('item/potion_make_power_max.png', 2),
-  // 다른 아이템은 프레임 56x70(내용 42x59)인데 이건 23x23짜리 단일 프레임이라
-  // 그대로 두면 혼자 작다. 1.8배로 키워 약 41px로 맞춘다
+  // 아래 셋은 원본이 작은 단일 프레임이라(누끼 후 23x23 / 24x30 / 24x26)
+  // 배율로 키워 세로 약 41px에 맞춘다. 다른 아이템(내용 42x59) 옆에서 혼자 작아 보이면 안 된다
   itemNeedle: S('item/niddle.png', 1, 1, 1.8),
+  itemSkull: S('item/skeleton.png', 1, 1, 1.37),
+  itemShield: S('item/shield.png', 1, 1, 1.58),
   // 봇 자리마다 다른 캐릭터를 준다. 전원이 같은 모습이면 누가 누군지 알 수 없다
   char0: S('chars/RedBazzi.png', 8, 4),
   char1: S('chars/BlueBazzi.png', 8, 4),
@@ -178,6 +180,8 @@ export async function loadSprites(): Promise<SpriteSet | null> {
       [ItemKind.Roller]: at('itemRoller'),
       [ItemKind.Potion]: at('itemPotion'),
       [ItemKind.Needle]: at('itemNeedle'),
+      [ItemKind.Skull]: at('itemSkull'),
+      [ItemKind.Shield]: at('itemShield'),
     },
     chars: [at('char0'), at('char1'), at('char2'), at('char3')],
   };
