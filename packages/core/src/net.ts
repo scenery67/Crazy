@@ -22,9 +22,17 @@ export function deserializeState(data: SerializedState): GameState {
   return { ...data, map: Uint8Array.from(data.map) };
 }
 
-/** 클라 → 서버. 입력이 바뀔 때만 보낸다 (WebSocket은 순서와 도착을 보장한다) */
+/**
+ * 클라 → 서버. 매 틱 보낸다.
+ *
+ * 예측·재조정을 하려면 "서버가 내 입력을 어디까지 반영했는가"를 알아야 하고,
+ * 그러려면 입력마다 번호가 붙어야 한다. 매 틱 40바이트 남짓이라
+ * 초당 2.4KB 정도이고, 이 정도면 아껴서 얻는 것보다 잃는 게 크다.
+ */
 export interface InputMessage {
   t: 'input';
+  /** 클라이언트가 매기는 단조 증가 번호 */
+  seq: number;
   move: Dir | null;
   place: boolean;
 }
@@ -43,6 +51,11 @@ export interface WelcomeMessage {
 export interface SnapshotMessage {
   t: 'snapshot';
   state: SerializedState;
+  /**
+   * 이 스냅샷에 반영된 마지막 입력 번호 (받는 클라이언트 기준).
+   * 클라이언트는 이 번호 이하의 입력을 버리고 나머지만 다시 재생한다.
+   */
+  ack: number;
 }
 
 /** 자리가 꽉 찼을 때 */

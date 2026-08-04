@@ -22,6 +22,10 @@ interface HumanSeat {
   move: Dir | null;
   /** 물풍선은 누른 순간의 1회성 신호다. 한 틱만 적용하고 지운다 */
   pendingPlace: boolean;
+  /** 마지막으로 받은 입력 번호. 스냅샷에 실어 보내 클라이언트가 재조정에 쓴다 */
+  lastSeq: number;
+  /** 이번 틱에 실제로 반영된 번호 (받은 것과 적용한 것을 구분해야 한다) */
+  appliedSeq: number;
 }
 
 /**
@@ -49,7 +53,7 @@ export class Room {
   join(): PlayerId | null {
     for (let id = 0; id < MAX_PLAYERS; id++) {
       if (this.humans.has(id)) continue;
-      this.humans.set(id, { move: null, pendingPlace: false });
+      this.humans.set(id, { move: null, pendingPlace: false, lastSeq: 0, appliedSeq: 0 });
       this.bots.delete(id);
       return id;
     }
@@ -62,11 +66,19 @@ export class Room {
     this.bots.set(playerId, this.makeBot(playerId));
   }
 
-  setInput(playerId: PlayerId, move: Dir | null, place: boolean): void {
+  setInput(playerId: PlayerId, seq: number, move: Dir | null, place: boolean): void {
     const seat = this.humans.get(playerId);
     if (!seat) return;
+    // 순서가 뒤집힌 패킷은 무시한다 (WebSocket에서는 드물지만 재접속 직후 섞일 수 있다)
+    if (seq <= seat.lastSeq) return;
+    seat.lastSeq = seq;
     seat.move = move;
     if (place) seat.pendingPlace = true;
+  }
+
+  /** 스냅샷에 실을, 이 자리에 반영된 마지막 입력 번호 */
+  ackFor(playerId: PlayerId): number {
+    return this.humans.get(playerId)?.appliedSeq ?? 0;
   }
 
   tick(): void {
@@ -75,6 +87,7 @@ export class Room {
     for (const [playerId, seat] of this.humans) {
       inputs.push({ playerId, move: seat.move, placeBubble: seat.pendingPlace });
       seat.pendingPlace = false;
+      seat.appliedSeq = seat.lastSeq;
     }
     for (const bot of this.bots.values()) {
       inputs.push(botInput(this.state, bot));

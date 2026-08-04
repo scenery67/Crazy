@@ -53,6 +53,8 @@ const seedEl = document.querySelector<HTMLElement>('#seed');
 const aliveEl = document.querySelector<HTMLElement>('#alive');
 const statsEl = document.querySelector<HTMLElement>('#stats');
 const phaseEl = document.querySelector<HTMLElement>('#phase');
+const corrEl = document.querySelector<HTMLElement>('#corr');
+const corrBoxEl = document.querySelector<HTMLElement>('#corrbox');
 
 const PLAYER_COLORS = ['#ef5b5b', '#4fa3f7', '#5bd08a', '#f2c14e'];
 const SKULL_LABELS = ['', '느림', '풍선↓', '강제설치'];
@@ -220,9 +222,9 @@ function frame(now: number): void {
   let ticksThisFrame = 0;
   while (accumulator >= MS_PER_TICK && ticksThisFrame < MAX_CATCHUP_TICKS) {
     if (online.status === 'connected') {
-      // 온라인에서는 시뮬레이션을 돌리지 않는다. 입력만 보내고 서버가 보낸 것을 그린다
+      // 서버가 진실이지만 내 입력은 즉시 반영한다. 스냅샷이 올 때마다 되감아 재조정된다
       const local = keyboard.poll()[0];
-      if (local) online.sendInput(local.move, local.placeBubble);
+      if (local) online.tick(local.move, local.placeBubble);
     } else {
       // 사람과 봇이 같은 InputFrame을 내놓는다. 시뮬레이션은 둘을 구분하지 않는다
       const inputs = keyboard.poll().slice(0, localCount);
@@ -252,6 +254,10 @@ function frame(now: number): void {
     phaseEl.textContent = left > 0 ? `${Math.ceil(left / TICK_RATE)}s` : '서든데스';
     phaseEl.style.color = left > 0 ? '' : '#ff6b6b';
   }
+  // 예측이 서버와 얼마나 어긋났는지. 계속 크면 예측이 깨졌다는 뜻이다
+  if (corrBoxEl) corrBoxEl.hidden = !online.isLive;
+  if (corrEl && online.isLive) corrEl.textContent = String(online.lastCorrection);
+
   // 매 프레임 DOM을 새로 쓸 이유가 없다. 시뮬레이션이 진행된 프레임에만 갱신한다
   if (ticksThisFrame > 0) renderStats(shown);
 

@@ -49,7 +49,7 @@ wss.on('connection', (ws) => {
     } catch {
       return; // 깨진 패킷 하나로 서버가 죽으면 안 된다
     }
-    if (msg.t === 'input') room.setInput(playerId, msg.move, msg.place);
+    if (msg.t === 'input') room.setInput(playerId, msg.seq, msg.move, msg.place);
   });
 
   const drop = (): void => {
@@ -82,9 +82,11 @@ setInterval(() => {
 
     if (++tickCounter >= SNAPSHOT_EVERY_TICKS) {
       tickCounter = 0;
-      const snapshot = JSON.stringify({ t: 'snapshot', state: serializeState(room.state) });
-      for (const ws of clients.keys()) {
-        if (ws.readyState === ws.OPEN) ws.send(snapshot);
+      // ack는 클라이언트마다 다르지만 state는 같다. 무거운 쪽을 한 번만 직렬화한다
+      const stateJson = JSON.stringify(serializeState(room.state));
+      for (const [ws, playerId] of clients) {
+        if (ws.readyState !== ws.OPEN) continue;
+        ws.send(`{"t":"snapshot","ack":${room.ackFor(playerId)},"state":${stateJson}}`);
       }
     }
   }
