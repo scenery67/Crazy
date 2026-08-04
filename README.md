@@ -37,6 +37,22 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
+### 온라인 (같은 판에서 대전)
+
+터미널 두 개가 필요하다.
+
+```bash
+npm run server     # ws://0.0.0.0:8080  — 서버 권위 60Hz, 스냅샷 20Hz
+npm run dev        # 클라이언트
+```
+
+브라우저에서 하단 **온라인** 칸의 주소를 확인하고 **접속**을 누른다.
+탭을 두 개 열면 둘이 같은 판에 들어간다. 최대 4명이고, **빈 자리는 봇이 채운다.**
+사람이 나가면 그 자리를 봇이 이어받는다.
+
+다른 기기에서 붙으려면 주소의 `localhost`를 서버 PC의 IP로 바꾸고,
+그 PC에서 **5173(클라이언트)과 8080(서버) 두 포트**를 방화벽에서 열어야 한다.
+
 ```bash
 npm test           # 시뮬레이션 테스트 (봇 vs 봇 헤드리스 대전 포함)
 npm run typecheck
@@ -49,7 +65,8 @@ packages/
   core/     순수 TS 시뮬레이션. DOM 의존 없음
     src/systems/   movement · bubble · explosion · trap · item · suddenDeath · victory
     src/ai/        danger(위험맵) · pathfind(시간 인지 BFS) · bot
-  client/   Canvas 2D 렌더 + 키보드 입력
+  client/   Canvas 2D 렌더 + 키보드 입력 + 온라인 접속
+  server/   Node + ws. core의 step()을 60Hz로 권위 실행
 ```
 
 `core`는 `client`를 import하지 않는다. 시뮬레이션이 60Hz 고정 틱 + 정수 좌표로

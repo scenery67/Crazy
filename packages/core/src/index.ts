@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './constants.js';
 export * from './geometry.js';
 export * from './stats.js';
+export * from './net.js';
 export * from './rng.js';
 export * from './map.js';
 export * from './sim.js';

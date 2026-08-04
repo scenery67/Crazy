@@ -1,5 +1,6 @@
 import {
   BOT_PRESETS,
+  DEFAULT_PORT,
   SUDDEN_DEATH_AT,
   TICK_RATE,
   botInput,
@@ -13,6 +14,7 @@ import {
   type TeamId,
 } from '@crazy/core';
 import { Keyboard } from './input.js';
+import { OnlineSession } from './online.js';
 import { createViewport, render, type Viewport } from './render.js';
 import { loadSprites, type SpriteSet } from './sprites.js';
 
@@ -56,15 +58,22 @@ const PLAYER_COLORS = ['#ef5b5b', '#4fa3f7', '#5bd08a', '#f2c14e'];
 const SKULL_LABELS = ['', '느림', '풍선↓', '강제설치'];
 
 /** 능력치가 안 보이면 아이템을 먹었는지조차 알 수 없다 */
-function renderStats(): void {
+function renderStats(shown: GameState): void {
   if (!statsEl) return;
-  statsEl.innerHTML = state.players
+  statsEl.innerHTML = shown.players
     .map((p, i) => {
       const fx: string[] = [];
       if (p.potionTicks > 0) fx.push('물약');
       if (p.skullTicks > 0) fx.push(SKULL_LABELS[p.skullKind] ?? '해골');
       if (p.needles > 0) fx.push(`바늘×${p.needles}`);
-      const label = i < localCount ? `${i + 1}P` : 'BOT';
+      // 온라인에서는 내 자리만 표시하면 된다 — 나머지는 사람인지 봇인지 알 수 없다
+      const label = online.isLive
+        ? p.id === online.playerId
+          ? '나'
+          : `${p.id + 1}P`
+        : i < localCount
+          ? `${i + 1}P`
+          : 'BOT';
       // 2v2에서는 누가 아군인지 한눈에 보여야 구출 플레이가 성립한다
       const team = mode === 'duo' ? `<span class="team">${TEAM_LABELS[p.teamId]}</span>` : '';
       return `<span class="p${p.alive ? '' : ' dead'}">
@@ -147,12 +156,51 @@ setupEl?.addEventListener('click', (e) => {
 syncSetup();
 
 window.addEventListener('keydown', (e) => {
+  if (online.isLive || online.status === 'connecting') return; // 온라인에서는 서버가 판을 정한다
   if (e.code === 'KeyR') newMatch();
   if (e.code === 'Digit1' || e.code === 'Digit2') {
     localCount = e.code === 'Digit1' ? 1 : 2;
     newMatch();
   }
 });
+
+// ─────────────────────────── 온라인 ───────────────────────────
+
+const serverEl = document.querySelector<HTMLInputElement>('#server');
+const connectEl = document.querySelector<HTMLButtonElement>('#connect');
+const netStatusEl = document.querySelector<HTMLElement>('#netstatus');
+
+const online = new OnlineSession(() => syncNet());
+
+/** 같은 PC에서 띄운 서버가 기본값. 다른 기기에서는 호스트만 바꾸면 된다 */
+if (serverEl) {
+  const host = location.hostname || 'localhost';
+  serverEl.value = `ws://${host}:${DEFAULT_PORT}`;
+}
+
+function syncNet(): void {
+  const connected = online.status === 'connected';
+  if (connectEl) connectEl.textContent = connected ? '연결 끊기' : '접속';
+  if (serverEl) serverEl.disabled = connected;
+  if (netStatusEl) {
+    netStatusEl.textContent = online.message;
+    netStatusEl.className = online.status === 'error' ? 'bad' : connected ? 'ok' : '';
+  }
+  // 온라인 중에는 로컬 설정이 의미가 없다
+  setupEl?.classList.toggle('locked', connected);
+}
+
+connectEl?.addEventListener('click', () => {
+  connectEl.blur();
+  if (online.status === 'connected' || online.status === 'connecting') {
+    online.disconnect();
+    syncNet();
+    newMatch();
+    return;
+  }
+  online.connect(serverEl?.value.trim() || `ws://localhost:${DEFAULT_PORT}`);
+});
+syncNet();
 
 /**
  * 고정 타임스텝 루프.
@@ -171,17 +219,24 @@ function frame(now: number): void {
 
   let ticksThisFrame = 0;
   while (accumulator >= MS_PER_TICK && ticksThisFrame < MAX_CATCHUP_TICKS) {
-    // 사람과 봇이 같은 InputFrame을 내놓는다. 시뮬레이션은 둘을 구분하지 않는다
-    const inputs = keyboard.poll().slice(0, localCount);
-    for (const bot of bots) inputs.push(botInput(state, bot));
-    state = step(state, inputs);
+    if (online.status === 'connected') {
+      // 온라인에서는 시뮬레이션을 돌리지 않는다. 입력만 보내고 서버가 보낸 것을 그린다
+      const local = keyboard.poll()[0];
+      if (local) online.sendInput(local.move, local.placeBubble);
+    } else {
+      // 사람과 봇이 같은 InputFrame을 내놓는다. 시뮬레이션은 둘을 구분하지 않는다
+      const inputs = keyboard.poll().slice(0, localCount);
+      for (const bot of bots) inputs.push(botInput(state, bot));
+      state = step(state, inputs);
+    }
     accumulator -= MS_PER_TICK;
     ticksThisFrame++;
   }
   // 따라잡기를 포기한 만큼은 버린다 (누적되면 나선형으로 악화된다)
   if (ticksThisFrame >= MAX_CATCHUP_TICKS) accumulator = 0;
 
-  render(viewport, state);
+  const shown = online.isLive ? (online.view(now) ?? state) : state;
+  render(viewport, shown);
 
   fpsCounter++;
   fpsTimer += delta;
@@ -190,15 +245,15 @@ function frame(now: number): void {
     fpsCounter = 0;
     fpsTimer = 0;
   }
-  if (tickEl) tickEl.textContent = String(state.tick);
-  if (aliveEl) aliveEl.textContent = String(state.players.filter((p) => p.alive).length);
+  if (tickEl) tickEl.textContent = String(shown.tick);
+  if (aliveEl) aliveEl.textContent = String(shown.players.filter((p) => p.alive).length);
   if (phaseEl) {
-    const left = SUDDEN_DEATH_AT - state.tick;
+    const left = SUDDEN_DEATH_AT - shown.tick;
     phaseEl.textContent = left > 0 ? `${Math.ceil(left / TICK_RATE)}s` : '서든데스';
     phaseEl.style.color = left > 0 ? '' : '#ff6b6b';
   }
   // 매 프레임 DOM을 새로 쓸 이유가 없다. 시뮬레이션이 진행된 프레임에만 갱신한다
-  if (ticksThisFrame > 0) renderStats();
+  if (ticksThisFrame > 0) renderStats(shown);
 
   requestAnimationFrame(frame);
 }

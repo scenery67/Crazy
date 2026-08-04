@@ -101,6 +101,48 @@
       #setup button:hover {
         background: rgb(255 255 255 / 0.12);
       }
+      #setup.locked {
+        opacity: 0.35;
+        pointer-events: none;
+      }
+      #net {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      #net label {
+        opacity: 0.6;
+      }
+      #net input {
+        font: inherit;
+        width: 220px;
+        color: #cbd5e1;
+        background: rgb(255 255 255 / 0.06);
+        border: 1px solid rgb(255 255 255 / 0.12);
+        border-radius: 5px;
+        padding: 3px 8px;
+      }
+      #net button {
+        font: inherit;
+        color: #cbd5e1;
+        background: rgb(255 255 255 / 0.06);
+        border: 1px solid transparent;
+        border-radius: 5px;
+        padding: 3px 12px;
+        cursor: pointer;
+      }
+      #net button:hover {
+        background: rgb(255 255 255 / 0.12);
+      }
+      #netstatus {
+        opacity: 0.8;
+      }
+      #netstatus.ok {
+        color: #8ae8b4;
+      }
+      #netstatus.bad {
+        color: #ff8a8a;
+      }
       #setup button[aria-pressed='true'] {
         color: #0e1420;
         background: #8ac4ff;
@@ -127,6 +169,12 @@
         <button type="button" data-value="normal">보통</button>
         <button type="button" data-value="hard">어려움</button>
       </span>
+    </div>
+    <div id="net">
+      <label for="server">온라인</label>
+      <input id="server" type="text" spellcheck="false" placeholder="ws://주소:8080" />
+      <button id="connect" type="button">접속</button>
+      <span id="netstatus"></span>
     </div>
     <canvas id="game"></canvas>
     <div id="stats"></div>
