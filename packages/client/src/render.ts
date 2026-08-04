@@ -227,9 +227,10 @@ function renderSprites(
 
   for (const b of state.bubbles) {
     const footY = (b.ty + 1) * TILE_PX;
-    // 터질 때가 가까울수록 빠르게 두근거린다
+    // 터질 때가 가까울수록 빠르게 두근거린다.
+    // 가장 빠를 때가 원작 모작의 프레임 간격(0.2초 = 12틱)이고, 시작은 그보다 느리다
     const urgency = 1 - Math.min(b.fuse, BUBBLE_FUSE) / BUBBLE_FUSE;
-    const speed = 14 - urgency * 9;
+    const speed = 22 - urgency * 10;
     tall.push({
       footY,
       paint: () =>
@@ -491,7 +492,7 @@ function drawBubblesAsShapes(ctx: CanvasRenderingContext2D, state: GameState): v
     const cy = (b.ty + 0.5) * TILE_PX;
 
     const urgency = 1 - Math.min(b.fuse, BUBBLE_FUSE) / BUBBLE_FUSE;
-    const period = 26 - urgency * 18;
+    const period = 45 - urgency * 27;
     const pulse = Math.sin((state.tick / period) * Math.PI * 2) * (0.05 + urgency * 0.09);
     const r = TILE_PX * (0.36 + pulse);
 

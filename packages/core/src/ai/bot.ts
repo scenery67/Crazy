@@ -21,6 +21,9 @@ import { UNREACHABLE, firstStep, flood, isWalkableTile } from './pathfind.js';
 const SAFETY_MARGIN = 10;
 /** 제자리에서 이만큼 못 움직이면 계획을 다시 세운다 */
 const STUCK_LIMIT = 12;
+/** 배회할 때 한 방향을 유지하는 틱 수 (사람도 방향을 잡으면 한동안 유지한다) */
+const WANDER_HOLD_MIN = 25;
+const WANDER_HOLD_RANGE = 35;
 
 export interface BotConfig {
   /** 기회가 왔을 때 실제로 물풍선을 놓을 확률 (%) */
@@ -49,7 +52,20 @@ export interface Bot {
   lastX: number;
   lastY: number;
   stuckTicks: number;
+  /**
+   * 이 틱 수가 지나기 전에는 타일이 바뀌어도 계획을 다시 세우지 않는다.
+   * 갈 곳이 없어 배회할 때 매 타일마다 방향을 새로 뽑으면 제자리에서 떨린다.
+   */
+  holdTicks: number;
 }
+
+/** 정반대 방향. 되꺾기를 막는 데 쓴다 */
+const REVERSE: Record<Dir, Dir> = {
+  [Dir.Up]: Dir.Down,
+  [Dir.Down]: Dir.Up,
+  [Dir.Left]: Dir.Right,
+  [Dir.Right]: Dir.Left,
+};
 
 export function createBot(
   playerId: PlayerId,
@@ -67,6 +83,7 @@ export function createBot(
     lastX: -1,
     lastY: -1,
     stuckTicks: 0,
+    holdTicks: 0,
   };
 }
 
@@ -98,17 +115,20 @@ export function botInput(state: GameState, bot: Bot): InputFrame {
   bot.lastX = p.x;
   bot.lastY = p.y;
 
+  if (bot.holdTicks > 0) bot.holdTicks--;
+  const stuck = bot.stuckTicks >= STUCK_LIMIT;
+
   const needsPlan =
     bot.dir === null ||
-    here !== bot.lastTile ||
     inDanger !== bot.lastInDanger ||
-    bot.stuckTicks >= STUCK_LIMIT;
+    stuck ||
+    (here !== bot.lastTile && bot.holdTicks === 0);
 
   if (needsPlan) {
     bot.lastTile = here;
     bot.lastInDanger = inDanger;
     bot.stuckTicks = 0;
-    replan(state, p, bot, danger, tx, ty, ticksPerTile, inDanger);
+    replan(state, p, bot, danger, tx, ty, ticksPerTile, inDanger, stuck);
   }
 
   const placeBubble = bot.placeNext;
@@ -125,11 +145,13 @@ function replan(
   ty: number,
   ticksPerTile: number,
   inDanger: boolean,
+  stuck: boolean,
 ): void {
   bot.placeNext = false;
 
-  // 위험할 때는 다른 걸 생각하지 않는다
+  // 위험할 때는 다른 걸 생각하지 않는다. 되꺾기 제한도 걸지 않는다
   if (inDanger) {
+    bot.holdTicks = 0;
     bot.dir = flee(state, p, danger, tx, ty, ticksPerTile);
     return;
   }
@@ -147,7 +169,14 @@ function replan(
     }
   }
 
-  bot.dir = seek(state, p, bot, danger, tx, ty, ticksPerTile);
+  const next = seek(state, p, bot, danger, tx, ty, ticksPerTile);
+
+  // 정반대로 꺾는 것이 제자리 떨림의 주범이다. 타일을 넘을 때마다 목표를
+  // 다시 고르다 보면 왔던 길로 되돌아가기를 반복한다.
+  // 막혀 있는 게 아니라면 가던 방향을 유지한다.
+  if (!stuck && next !== null && bot.dir !== null && next === REVERSE[bot.dir]) return;
+
+  bot.dir = next;
 }
 
 /** 안전한 타일로 가는 첫 걸음. 없으면 가장 오래 버틸 수 있는 쪽으로 */
@@ -219,11 +248,21 @@ function seek(
   const enemy = nearestToEnemy(state, p, f);
   if (enemy >= 0) return firstStep(state, f, enemy);
 
-  // 갈 곳이 없으면 아무 방향이나 잡고 유지한다 (매 틱 다시 뽑으면 굳는다)
-  return ALL_DIRS[bot.rng.int(ALL_DIRS.length)] ?? null;
+  // 갈 곳이 없으면 배회한다. 이때가 떨림이 제일 심하므로 두 가지를 지킨다:
+  // 실제로 열린 방향만 고르고, 한동안 그 방향을 유지한다
+  const open = ALL_DIRS.filter(([, dx, dy]) => isPassable(state, p, tx + dx, ty + dy));
+  const picked = (open.length > 0 ? open : ALL_DIRS)[bot.rng.int(open.length || ALL_DIRS.length)];
+  bot.holdTicks = WANDER_HOLD_MIN + bot.rng.int(WANDER_HOLD_RANGE);
+  return picked ? picked[0] : null;
 }
 
-const ALL_DIRS: readonly Dir[] = [Dir.Up, Dir.Down, Dir.Left, Dir.Right];
+/** [방향, dx, dy] */
+const ALL_DIRS: readonly (readonly [Dir, number, number])[] = [
+  [Dir.Up, 0, -1],
+  [Dir.Down, 0, 1],
+  [Dir.Left, -1, 0],
+  [Dir.Right, 1, 0],
+];
 
 function nearest(
   state: GameState,
