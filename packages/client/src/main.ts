@@ -2,7 +2,11 @@ import {
   BOT_PRESETS,
   DEFAULT_PORT,
   DEFAULT_ROOM,
+  ReplayReader,
+  ReplayRecorder,
   SUDDEN_DEATH_AT,
+  createReplayState,
+  isReplay,
   normalizeRoom,
   TICK_RATE,
   botInput,
@@ -53,10 +57,20 @@ const particles = new Particles();
 const corpses = new Corpses();
 
 /**
+ * 리플레이는 시드와 입력 로그만 저장한다 — 결정론이라 상태는 필요 없다.
+ * 온라인에서는 녹화하지 않는다. 클라이언트가 아는 것은 자기 입력뿐이라
+ * 남의 입력을 담을 수 없기 때문이다.
+ */
+let recorder: ReplayRecorder | null = null;
+let playback: { reader: ReplayReader; ticks: number } | null = null;
+
+/**
  * 사람이 잡고 있는 자리. 렌더러가 사용자 캐릭터와 봇 캐릭터를 갈라 그리는 데 쓴다.
  * 온라인에서는 내 자리 하나뿐이고, 관전 중이면 비어 있다.
  */
 function localPlayerIds(): ReadonlySet<number> {
+  // 재생 중에는 내가 조종하는 자리가 없다
+  if (playback) return new Set();
   if (online.isLive) {
     return online.playerId === null ? new Set() : new Set([online.playerId]);
   }
@@ -115,7 +129,8 @@ function renderStats(shown: GameState): void {
 }
 
 let seed = Math.floor(Math.random() * 0x7fffffff) || 1;
-let state: GameState = createInitialState({ seed, teams: soloTeams(TOTAL_PLAYERS) });
+const initialTeams = soloTeams(TOTAL_PLAYERS);
+let state: GameState = createInitialState({ seed, teams: initialTeams });
 /**
  * 스프라이트는 저장소에 없다(개인 사용 전용). 없으면 null이 되고
  * 렌더러가 도형 모드로 그린다 — 공개 배포본이 이 경로를 탄다.
@@ -123,6 +138,9 @@ let state: GameState = createInitialState({ seed, teams: soloTeams(TOTAL_PLAYERS
 let sprites: SpriteSet | null = null;
 let viewport: Viewport = createViewport(canvas, state, sprites);
 let bots: Bot[] = [];
+
+// 첫 판도 녹화 대상이다
+recorder = new ReplayRecorder(seed, initialTeams);
 
 void loadSprites().then((loaded) => {
   sprites = loaded;
@@ -138,9 +156,13 @@ function spawnBots(): void {
 
 function newMatch(): void {
   seed = Math.floor(Math.random() * 0x7fffffff) || 1;
-  state = createInitialState({ seed, teams: teamsForMode() });
+  const teams = teamsForMode();
+  state = createInitialState({ seed, teams });
   viewport = createViewport(canvas!, state, sprites);
   spawnBots();
+  playback = null;
+  recorder = new ReplayRecorder(seed, teams);
+  if (replayStatusEl) replayStatusEl.textContent = '';
   // 새 판의 상태 차이를 이벤트로 읽으면 소리와 파티클이 한꺼번에 터진다
   events.reset();
   particles.clear();
@@ -256,6 +278,70 @@ connectEl?.addEventListener('click', () => {
 });
 syncNet();
 
+// ─────────────────────────── 리플레이 ───────────────────────────
+
+const saveReplayEl = document.querySelector<HTMLButtonElement>('#savereplay');
+const loadReplayEl = document.querySelector<HTMLButtonElement>('#loadreplay');
+const replayFileEl = document.querySelector<HTMLInputElement>('#replayfile');
+const replayStatusEl = document.querySelector<HTMLElement>('#replaystatus');
+
+saveReplayEl?.addEventListener('click', () => {
+  saveReplayEl.blur();
+  if (!recorder) {
+    if (replayStatusEl) replayStatusEl.textContent = '온라인·재생 중에는 저장할 수 없습니다';
+    return;
+  }
+  const replay = recorder.finish();
+  const blob = new Blob([JSON.stringify(replay)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `crazy-${replay.seed}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  if (replayStatusEl) {
+    replayStatusEl.textContent = `저장 ${Math.floor(replay.ticks / TICK_RATE)}s · ${Math.round(blob.size / 1024)}KB`;
+  }
+});
+
+loadReplayEl?.addEventListener('click', () => {
+  loadReplayEl.blur();
+  replayFileEl?.click();
+});
+
+replayFileEl?.addEventListener('change', () => {
+  const file = replayFileEl.files?.[0];
+  replayFileEl.value = ''; // 같은 파일을 다시 열 수 있게 한다
+  if (!file) return;
+
+  void file.text().then((text) => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      if (replayStatusEl) replayStatusEl.textContent = '읽을 수 없는 파일입니다';
+      return;
+    }
+    if (!isReplay(parsed)) {
+      if (replayStatusEl) replayStatusEl.textContent = '리플레이 파일이 아닙니다';
+      return;
+    }
+
+    online.disconnect();
+    syncNet();
+    state = createReplayState(parsed);
+    viewport = createViewport(canvas, state, sprites);
+    playback = { reader: new ReplayReader(parsed), ticks: parsed.ticks };
+    recorder = null;
+    bots = [];
+    events.reset();
+    particles.clear();
+    corpses.clear();
+    seed = parsed.seed;
+    if (seedEl) seedEl.textContent = String(seed);
+  });
+});
+
 /**
  * 고정 타임스텝 루프.
  * 시뮬레이션은 정확히 60Hz로 돌고, 렌더는 화면 주사율대로 돈다.
@@ -277,10 +363,21 @@ function frame(now: number): void {
       // 서버가 진실이지만 내 입력은 즉시 반영한다. 스냅샷이 올 때마다 되감아 재조정된다
       const local = keyboard.poll()[0];
       if (local) online.tick(local.move, local.placeBubble);
+    } else if (playback) {
+      if (state.tick < playback.ticks) {
+        state = step(state, playback.reader.inputsFor(state.tick));
+        if (replayStatusEl) {
+          replayStatusEl.textContent = `재생 ${Math.floor(state.tick / TICK_RATE)}s / ${Math.floor(playback.ticks / TICK_RATE)}s`;
+        }
+      } else if (replayStatusEl) {
+        replayStatusEl.textContent = '재생 끝 (R로 새 판)';
+      }
     } else {
       // 사람과 봇이 같은 InputFrame을 내놓는다. 시뮬레이션은 둘을 구분하지 않는다
       const inputs = keyboard.poll().slice(0, localCount);
       for (const bot of bots) inputs.push(botInput(state, bot));
+      // step이 tick을 올리므로 반드시 그 전에 기록해야 한다
+      recorder?.record(state.tick, inputs);
       state = step(state, inputs);
     }
     accumulator -= MS_PER_TICK;
