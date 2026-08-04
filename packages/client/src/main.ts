@@ -94,6 +94,7 @@ const phaseEl = document.querySelector<HTMLElement>('#phase');
 const corrEl = document.querySelector<HTMLElement>('#corr');
 const corrBoxEl = document.querySelector<HTMLElement>('#corrbox');
 const muteEl = document.querySelector<HTMLElement>('#mute');
+const touchKeyEl = document.querySelector<HTMLElement>('#touchkey');
 
 const PLAYER_COLORS = ['#ef5b5b', '#4fa3f7', '#5bd08a', '#f2c14e'];
 const SKULL_LABELS = ['', '느림', '풍선↓', '강제설치'];
@@ -132,10 +133,7 @@ function renderStats(shown: GameState): void {
 let seed = Math.floor(Math.random() * 0x7fffffff) || 1;
 const initialTeams = soloTeams(TOTAL_PLAYERS);
 let state: GameState = createInitialState({ seed, teams: initialTeams });
-/**
- * 스프라이트는 저장소에 없다(개인 사용 전용). 없으면 null이 되고
- * 렌더러가 도형 모드로 그린다 — 공개 배포본이 이 경로를 탄다.
- */
+/** 스프라이트를 못 불러오면 null이 되고, 렌더러가 도형 모드로 그린다 */
 let sprites: SpriteSet | null = null;
 let viewport: Viewport = createViewport(canvas, state, sprites);
 let bots: Bot[] = [];
@@ -183,11 +181,27 @@ const knobEl = document.querySelector<HTMLElement>('#knob');
 const bombEl = document.querySelector<HTMLElement>('#bombbtn');
 
 let touchPad: TouchPad | null = null;
-if (TouchPad.supported && touchEl && stickEl && knobEl && bombEl) {
-  touchEl.hidden = false;
-  document.body.classList.add('has-touch');
-  touchPad = new TouchPad(stickEl, knobEl, bombEl);
+let touchVisible = false;
+
+function showTouchPad(on: boolean): void {
+  if (!touchEl || !stickEl || !knobEl || !bombEl) return;
+  touchVisible = on;
+  touchEl.hidden = !on;
+  document.body.classList.toggle('has-touch', on);
+  if (on && !touchPad) touchPad = new TouchPad(stickEl, knobEl, bombEl);
+  if (touchKeyEl) touchKeyEl.textContent = on ? '켜짐' : '꺼짐';
 }
+
+showTouchPad(TouchPad.preferred);
+
+// 터치 노트북처럼 판정이 애매한 기기가 있다. 실제로 손가락이 닿으면 그때 띄운다
+window.addEventListener(
+  'pointerdown',
+  (e) => {
+    if (e.pointerType === 'touch' && !touchVisible) showTouchPad(true);
+  },
+  { capture: true },
+);
 
 /** 키보드와 터치를 합친다. 어느 쪽으로 조작해도 1P가 움직인다 */
 function localInputs(): InputFrame[] {
@@ -243,6 +257,8 @@ window.addEventListener('keydown', (e) => {
     audio.muted = !audio.muted;
     if (muteEl) muteEl.textContent = audio.muted ? '음소거' : '켜짐';
   }
+  // 자동 판정이 틀릴 때를 위한 수동 전환
+  if (e.code === 'KeyT') showTouchPad(!touchVisible);
   if (online.isLive || online.status === 'connecting') return; // 온라인에서는 서버가 판을 정한다
   if (e.code === 'KeyR') newMatch();
   if (e.code === 'Digit1' || e.code === 'Digit2') {

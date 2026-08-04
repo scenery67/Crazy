@@ -12,7 +12,3 @@ dist-types/
 # (이 저장소는 public이고 push하면 GitHub Pages로 자동 공개된다)
 # sample/ 만 막았다가 sample2/ 가 통째로 푸시된 적이 있다. 반드시 와일드카드로 둔다
 packages/sample*/
-
-# 원작에서 추출된 스프라이트. 로컬 개인 플레이 전용이며 배포본에는 포함하지 않는다.
-# 파일이 없으면 렌더러가 자동으로 도형 모드로 되돌아간다
-packages/client/public/sprites/

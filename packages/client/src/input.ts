@@ -68,9 +68,16 @@ export class TouchPad {
   private originX = 0;
   private originY = 0;
 
-  /** 터치가 되는 기기인가. 아니면 조작판을 띄우지 않는다 */
-  static get supported(): boolean {
-    return navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+  /**
+   * 주 입력장치가 손가락인가.
+   *
+   * `maxTouchPoints > 0`으로 판정하면 안 된다. 그건 "터치가 되는가"이고,
+   * 터치스크린 달린 PC도 참이라 마우스로 쓰는데 조작판이 뜬다.
+   * `pointer: coarse`는 **주** 포인터가 굵은지를 묻기 때문에,
+   * 터치 노트북에 마우스가 붙어 있으면 거짓이 된다.
+   */
+  static get preferred(): boolean {
+    return window.matchMedia?.('(pointer: coarse)').matches ?? false;
   }
 
   constructor(
