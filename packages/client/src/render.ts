@@ -20,6 +20,16 @@ import { CHAR_ROW, CHAR_SCALE, drawFrame, type Sheet, type SpriteSet } from './s
 /** 원본 스프라이트가 52px 타일 기준이라 1:1로 맞춘다 */
 export const TILE_PX = 52;
 
+/**
+ * 물풍선 두근거림의 프레임 간격(틱). 방금 놓았을 때 → 터지기 직전.
+ * 4프레임이므로 한 바퀴가 각각 2.5초, 1.3초다.
+ *
+ * 원작 모작은 0.2초(12틱) 고정이었지만 그대로 쓰면 너무 급해 보인다.
+ * 취향 값이니 급하게 느껴지면 내리고 굼떠 보이면 올린다.
+ */
+const BOMB_FRAME_CALM = 38;
+const BOMB_FRAME_URGENT = 20;
+
 const PALETTE = {
   floorA: '#1b2a3a',
   floorB: '#1f3145',
@@ -216,10 +226,9 @@ function renderSprites(
 
   for (const b of state.bubbles) {
     const footY = (b.ty + 1) * TILE_PX;
-    // 터질 때가 가까울수록 빠르게 두근거린다.
-    // 가장 빠를 때가 원작 모작의 프레임 간격(0.2초 = 12틱)이고, 시작은 그보다 느리다
+    // 터질 때가 가까울수록 빠르게 두근거린다
     const urgency = 1 - Math.min(b.fuse, BUBBLE_FUSE) / BUBBLE_FUSE;
-    const speed = 22 - urgency * 10;
+    const speed = BOMB_FRAME_CALM - urgency * (BOMB_FRAME_CALM - BOMB_FRAME_URGENT);
     tall.push({
       footY,
       paint: () =>
@@ -501,7 +510,7 @@ function drawBubblesAsShapes(ctx: CanvasRenderingContext2D, state: GameState): v
     const cy = (b.ty + 0.5) * TILE_PX;
 
     const urgency = 1 - Math.min(b.fuse, BUBBLE_FUSE) / BUBBLE_FUSE;
-    const period = 45 - urgency * 27;
+    const period = 78 - urgency * 44;
     const pulse = Math.sin((state.tick / period) * Math.PI * 2) * (0.05 + urgency * 0.09);
     const r = TILE_PX * (0.36 + pulse);
 
