@@ -83,9 +83,7 @@ const SPECS = {
   trap: S('player/bazzi/trap.png', 13),
   die: S('player/bazzi/die.png', 13),
   shadow: S('player/shadow.png'),
-  // 설치된 물풍선도 아이템과 같은 물풍선 그림을 쓴다.
-  // 다만 바닥에 떨어진 아이템과 구분되어야 해서 조금 크게 그린다
-  bomb: S('item/ballon.png', 2, 1, 1.15),
+  bomb: S('bomb/1.png', 4),
   burst: S('bomb/pop.png', 6),
   waveArmUp: S('wave/up2.png', 11),
   waveArmDown: S('wave/down2.png', 11),
@@ -103,9 +101,9 @@ const SPECS = {
   itemPower: S('item/potion.png', 2),
   itemRoller: S('item/skate.png', 2),
   itemPotion: S('item/potion_make_power_max.png', 2),
-  // 다른 아이템은 프레임 56x70에 내용이 42x59인데 이건 28x46짜리 단일 프레임이라,
-  // 그대로 두면 혼자 작아 보인다. 높이를 맞춰 1.28배로 그린다
-  itemNeedle: S('item/niddle.png', 1, 1, 1.28),
+  // 다른 아이템은 프레임 56x70(내용 42x59)인데 이건 23x23짜리 단일 프레임이라
+  // 그대로 두면 혼자 작다. 1.8배로 키워 약 41px로 맞춘다
+  itemNeedle: S('item/niddle.png', 1, 1, 1.8),
   // 봇 자리마다 다른 캐릭터를 준다. 전원이 같은 모습이면 누가 누군지 알 수 없다
   char0: S('chars/RedBazzi.png', 8, 4),
   char1: S('chars/BlueBazzi.png', 8, 4),
