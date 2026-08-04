@@ -172,19 +172,7 @@ function renderSprites(
     }
   }
 
-  // 2. 바닥에 놓인 것들
-  for (const item of state.items) {
-    const sheet = sp.items[item.kind];
-    const cx = (item.tx + 0.5) * TILE_PX;
-    const bob = Math.sin((state.tick + item.tx * 7 + item.ty * 13) / 18) * 2;
-    if (sheet) {
-      drawFrame(ctx, sheet, Math.floor(state.tick / 15), cx, (item.ty + 1) * TILE_PX + bob);
-    } else {
-      // 대응 그림이 없는 아이템(바늘·해골·방패)은 도형으로 그린다
-      drawItemGlyphTile(ctx, item.kind, cx, (item.ty + 0.5) * TILE_PX + bob);
-    }
-  }
-
+  // 2. 물줄기는 바닥에 깔린다
   for (const w of state.waters) {
     const sheet = w.kind === WaterKind.Center ? sp.burst : pickWave(sp, w.kind, w.dir);
     const progress = 1 - w.ticksLeft / WATER_DURATION;
@@ -248,6 +236,21 @@ function renderSprites(
 
   tall.sort((a, b) => a.footY - b.footY);
   for (const d of tall) d.paint();
+
+  // 4. 아이템은 블록보다 위에 그린다.
+  //    블록이 타일보다 크게 위로 넘치는 탓에, 순서대로 그리면 한 칸 위 아이템을 덮는다.
+  //    아이템은 보이지 않으면 존재 자체를 모르므로 가려지는 쪽이 훨씬 나쁘다
+  for (const item of state.items) {
+    const sheet = sp.items[item.kind];
+    const cx = (item.tx + 0.5) * TILE_PX;
+    const bob = Math.sin((state.tick + item.tx * 7 + item.ty * 13) / 18) * 2;
+    if (sheet) {
+      drawFrame(ctx, sheet, Math.floor(state.tick / 15), cx, (item.ty + 1) * TILE_PX + bob);
+    } else {
+      // 대응 그림이 없는 아이템(바늘·해골·방패)은 도형으로 그린다
+      drawItemGlyphTile(ctx, item.kind, cx, (item.ty + 0.5) * TILE_PX + bob);
+    }
+  }
 }
 
 function pickWave(sp: SpriteSet, kind: WaterKind, dir: Dir | null): Sheet {
@@ -281,7 +284,12 @@ function paintPlayer(
   ctx.stroke();
 
   if (trapped) {
-    drawFrame(ctx, sp.trap, Math.floor(state.tick / 12), cx, footY + 10);
+    // 남은 시간에 애니메이션을 맞춘다. 틱으로 돌리면 13프레임 시퀀스가 2.6초마다
+    // 처음으로 되감겨서, 갇혀 있는 동안 물방울이 터졌다 되돌아가기를 반복한다.
+    // 이렇게 하면 마지막 프레임(터짐)이 죽는 순간에 정확히 한 번 나온다
+    const progress = 1 - p.statusTicks / TRAP_DURATION;
+    const frame = Math.min(sp.trap.frames - 1, Math.floor(progress * sp.trap.frames));
+    drawFrame(ctx, sp.trap, frame, cx, footY + 10);
   } else {
     const pose = walkPose(p, state.tick);
     // 멈춰도 바라보던 방향을 유지한다. 정면으로 되돌리면 방향이 튕겨 보인다
