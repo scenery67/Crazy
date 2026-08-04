@@ -17,6 +17,12 @@ export interface Sheet {
   /** 프레임 하나의 크기 */
   fw: number;
   fh: number;
+  /**
+   * 그릴 때 곱할 배율.
+   * 출처가 다른 그림은 원래 크기가 제각각이라, 시트마다 배율을 들고 있어야
+   * 한 화면에서 어떤 것만 유독 작거나 크게 보이지 않는다.
+   */
+  scale: number;
 }
 
 /**
@@ -63,9 +69,10 @@ interface Spec {
   path: string;
   frames: number;
   rows: number;
+  scale: number;
 }
 
-const S = (path: string, frames = 1, rows = 1): Spec => ({ path, frames, rows });
+const S = (path: string, frames = 1, rows = 1, scale = 1): Spec => ({ path, frames, rows, scale });
 
 /** 프레임 수는 원본 프로젝트의 imageManager 등록값과 같다 */
 const SPECS = {
@@ -94,6 +101,9 @@ const SPECS = {
   itemPower: S('item/potion.png', 2),
   itemRoller: S('item/skate.png', 2),
   itemPotion: S('item/potion_make_power_max.png', 2),
+  // 다른 아이템은 프레임 56x70에 내용이 42x59인데 이건 28x46짜리 단일 프레임이라,
+  // 그대로 두면 혼자 작아 보인다. 높이를 맞춰 1.28배로 그린다
+  itemNeedle: S('item/niddle.png', 1, 1, 1.28),
   // 봇 자리마다 다른 캐릭터를 준다. 전원이 같은 모습이면 누가 누군지 알 수 없다
   char0: S('chars/RedBazzi.png', 8, 4),
   char1: S('chars/BlueBazzi.png', 8, 4),
@@ -111,6 +121,7 @@ function loadSheet(base: string, spec: Spec): Promise<Sheet> {
         img,
         frames: spec.frames,
         rows: spec.rows,
+        scale: spec.scale,
         fw: Math.floor(img.naturalWidth / spec.frames),
         fh: Math.floor(img.naturalHeight / spec.rows),
       });
@@ -166,6 +177,7 @@ export async function loadSprites(): Promise<SpriteSet | null> {
       [ItemKind.Power]: at('itemPower'),
       [ItemKind.Roller]: at('itemRoller'),
       [ItemKind.Potion]: at('itemPotion'),
+      [ItemKind.Needle]: at('itemNeedle'),
     },
     chars: [at('char0'), at('char1'), at('char2'), at('char3')],
   };
@@ -187,8 +199,9 @@ export function drawFrame(
 ): void {
   const i = ((frame % sheet.frames) + sheet.frames) % sheet.frames;
   const r = Math.min(Math.max(row, 0), sheet.rows - 1);
-  const w = sheet.fw * scale;
-  const h = sheet.fh * scale;
+  const s = sheet.scale * scale;
+  const w = sheet.fw * s;
+  const h = sheet.fh * s;
   ctx.drawImage(
     sheet.img,
     i * sheet.fw,
