@@ -12,5 +12,7 @@ export default defineConfig({
   server: {
     port: 5173,
     open: true,
+    // 기본값은 localhost만 받는다. 같은 네트워크의 다른 기기에서 열어보려면 필요하다
+    host: true,
   },
 });
