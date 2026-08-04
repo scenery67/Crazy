@@ -50,6 +50,94 @@ class DirectionStack {
   }
 }
 
+/** 스틱 중심에서 이만큼 밀어야 방향으로 친다. 손가락은 정확하지 않다 */
+const STICK_DEADZONE = 22;
+const STICK_RANGE = 46;
+
+/**
+ * 터치 조작.
+ *
+ * 격자 4방향 이동이라 아날로그 값이 쓸모없다. 밀어낸 방향을 **가장 큰 축 하나로
+ * 스냅해서** 키보드와 똑같은 입력을 만든다. 대각선을 허용하면 레인 정렬과
+ * 싸우게 되어 오히려 조작이 나빠진다.
+ */
+export class TouchPad {
+  private move: Dir | null = null;
+  private pendingPlace = false;
+  private pointerId: number | null = null;
+  private originX = 0;
+  private originY = 0;
+
+  /** 터치가 되는 기기인가. 아니면 조작판을 띄우지 않는다 */
+  static get supported(): boolean {
+    return navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
+  }
+
+  constructor(
+    private readonly stick: HTMLElement,
+    private readonly knob: HTMLElement,
+    bomb: HTMLElement,
+  ) {
+    stick.addEventListener('pointerdown', (e) => this.grab(e));
+    stick.addEventListener('pointermove', (e) => this.drag(e));
+    for (const type of ['pointerup', 'pointercancel', 'pointerleave'] as const) {
+      stick.addEventListener(type, (e) => this.release(e));
+    }
+
+    bomb.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      this.pendingPlace = true;
+    });
+    // 버튼이 눌린 채 남으면 다음 탭이 안 먹는다
+    bomb.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  private grab(e: PointerEvent): void {
+    e.preventDefault();
+    this.pointerId = e.pointerId;
+    const box = this.stick.getBoundingClientRect();
+    // 처음 짚은 곳을 중심으로 삼는다. 스틱 정중앙을 짚기는 어렵다
+    this.originX = box.left + box.width / 2;
+    this.originY = box.top + box.height / 2;
+    this.stick.setPointerCapture(e.pointerId);
+    this.drag(e);
+  }
+
+  private drag(e: PointerEvent): void {
+    if (this.pointerId !== e.pointerId) return;
+    e.preventDefault();
+
+    const dx = e.clientX - this.originX;
+    const dy = e.clientY - this.originY;
+
+    if (Math.hypot(dx, dy) < STICK_DEADZONE) {
+      this.move = null;
+    } else if (Math.abs(dx) > Math.abs(dy)) {
+      this.move = dx > 0 ? Dir.Right : Dir.Left;
+    } else {
+      this.move = dy > 0 ? Dir.Down : Dir.Up;
+    }
+
+    const scale = Math.min(1, Math.hypot(dx, dy) / STICK_RANGE);
+    const angle = Math.atan2(dy, dx);
+    this.knob.style.transform = `translate(${Math.cos(angle) * STICK_RANGE * scale}px, ${Math.sin(angle) * STICK_RANGE * scale}px)`;
+  }
+
+  private release(e: PointerEvent): void {
+    if (this.pointerId !== e.pointerId) return;
+    this.pointerId = null;
+    this.move = null;
+    this.knob.style.transform = '';
+  }
+
+  /** 호출할 때마다 물풍선 신호는 소비된다 */
+  poll(): { move: Dir | null; place: boolean } {
+    const place = this.pendingPlace;
+    this.pendingPlace = false;
+    return { move: this.move, place };
+  }
+}
+
 export class Keyboard {
   private dirs = new Map<PlayerId, DirectionStack>();
   /** 물풍선은 누른 순간 1틱만 true. 시뮬레이션이 엣지 판정을 따로 하지 않아도 되게 한다 */

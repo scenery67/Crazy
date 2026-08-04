@@ -2,7 +2,8 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 게임 중 두 손가락 확대가 걸리면 조작이 끊긴다 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
     <title>크레이지 아케이드</title>
     <style>
       :root {
@@ -147,6 +148,64 @@
       #netstatus.bad {
         color: #ff8a8a;
       }
+
+      /* 조작판이 화면 아래를 차지하므로 그만큼 비워둔다 */
+      body.has-touch {
+        padding-bottom: 210px;
+        touch-action: manipulation;
+        overscroll-behavior: none;
+      }
+      /* 터치 조작 — 손가락으로 가려지지 않게 화면 아래 양쪽 끝에 둔다 */
+      #touch {
+        position: fixed;
+        inset: auto 0 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        padding: 18px 22px 26px;
+        pointer-events: none;
+        touch-action: none;
+        z-index: 10;
+      }
+      #touch > * {
+        pointer-events: auto;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      #stick {
+        position: relative;
+        width: 132px;
+        height: 132px;
+        border-radius: 50%;
+        background: rgb(255 255 255 / 0.07);
+        border: 2px solid rgb(255 255 255 / 0.14);
+      }
+      #knob {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 54px;
+        height: 54px;
+        margin: -27px 0 0 -27px;
+        border-radius: 50%;
+        background: rgb(138 196 255 / 0.55);
+        border: 2px solid rgb(255 255 255 / 0.3);
+      }
+      #bombbtn {
+        width: 108px;
+        height: 108px;
+        border-radius: 50%;
+        font: inherit;
+        font-size: 15px;
+        font-weight: 700;
+        color: #0e1420;
+        background: #8ac4ff;
+        border: 3px solid rgb(255 255 255 / 0.35);
+      }
+      #bombbtn:active {
+        background: #5aa6f0;
+      }
       #setup button[aria-pressed='true'] {
         color: #0e1420;
         background: #8ac4ff;
@@ -200,6 +259,10 @@
       <span><b>1/2</b> 사람 수</span>
       <span><b>R</b> 새 판</span>
       <span>소리 <b id="mute">켜짐</b> (<b>M</b>)</span>
+    </div>
+    <div id="touch" hidden>
+      <div id="stick"><div id="knob"></div></div>
+      <button id="bombbtn" type="button">물풍선</button>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

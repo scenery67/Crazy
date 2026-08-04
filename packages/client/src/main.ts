@@ -17,12 +17,13 @@ import {
   step,
   type Bot,
   type GameState,
+  type InputFrame,
   type TeamId,
 } from '@crazy/core';
 import { GameAudio } from './audio.js';
 import { Corpses } from './corpses.js';
 import { EventDetector } from './events.js';
-import { Keyboard } from './input.js';
+import { Keyboard, TouchPad } from './input.js';
 import { OnlineSession } from './online.js';
 import { Particles } from './particles.js';
 import { TILE_PX, createViewport, render, type Viewport } from './render.js';
@@ -174,6 +175,31 @@ if (seedEl) seedEl.textContent = String(seed);
 spawnBots();
 
 const keyboard = new Keyboard(MAX_LOCAL);
+
+/** 터치 기기에서만 조작판을 띄운다. 데스크톱에서는 화면만 가린다 */
+const touchEl = document.querySelector<HTMLElement>('#touch');
+const stickEl = document.querySelector<HTMLElement>('#stick');
+const knobEl = document.querySelector<HTMLElement>('#knob');
+const bombEl = document.querySelector<HTMLElement>('#bombbtn');
+
+let touchPad: TouchPad | null = null;
+if (TouchPad.supported && touchEl && stickEl && knobEl && bombEl) {
+  touchEl.hidden = false;
+  document.body.classList.add('has-touch');
+  touchPad = new TouchPad(stickEl, knobEl, bombEl);
+}
+
+/** 키보드와 터치를 합친다. 어느 쪽으로 조작해도 1P가 움직인다 */
+function localInputs(): InputFrame[] {
+  const frames = keyboard.poll().slice(0, localCount);
+  const touch = touchPad?.poll();
+  const first = frames[0];
+  if (touch && first) {
+    if (touch.move !== null) first.move = touch.move;
+    if (touch.place) first.placeBubble = true;
+  }
+  return frames;
+}
 
 const setupEl = document.querySelector<HTMLElement>('#setup');
 
@@ -361,7 +387,7 @@ function frame(now: number): void {
   while (accumulator >= MS_PER_TICK && ticksThisFrame < MAX_CATCHUP_TICKS) {
     if (online.status === 'connected') {
       // 서버가 진실이지만 내 입력은 즉시 반영한다. 스냅샷이 올 때마다 되감아 재조정된다
-      const local = keyboard.poll()[0];
+      const local = localInputs()[0];
       if (local) online.tick(local.move, local.placeBubble);
     } else if (playback) {
       if (state.tick < playback.ticks) {
@@ -374,7 +400,7 @@ function frame(now: number): void {
       }
     } else {
       // 사람과 봇이 같은 InputFrame을 내놓는다. 시뮬레이션은 둘을 구분하지 않는다
-      const inputs = keyboard.poll().slice(0, localCount);
+      const inputs = localInputs();
       for (const bot of bots) inputs.push(botInput(state, bot));
       // step이 tick을 올리므로 반드시 그 전에 기록해야 한다
       recorder?.record(state.tick, inputs);
