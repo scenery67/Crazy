@@ -256,8 +256,8 @@ function renderSprites(
     if (sheet) {
       drawFrame(ctx, sheet, Math.floor(state.tick / 15), cx, (item.ty + 1) * TILE_PX + bob);
     } else {
-      // 대응 그림이 없는 아이템(바늘·해골·방패)은 도형으로 그린다
-      drawItemGlyphTile(ctx, item.kind, cx, (item.ty + 0.5) * TILE_PX + bob);
+      // 그림이 없는 아이템(바늘·해골·방패)은 직접 그린다
+      drawFallbackItem(ctx, item.kind, cx, (item.ty + 1) * TILE_PX + bob);
     }
   }
 }
@@ -381,110 +381,180 @@ function drawBlock(
 function drawItemsAsShapes(ctx: CanvasRenderingContext2D, state: GameState): void {
   for (const item of state.items) {
     const bob = Math.sin((state.tick + item.tx * 7 + item.ty * 13) / 18) * 2;
-    drawItemGlyphTile(ctx, item.kind, (item.tx + 0.5) * TILE_PX, (item.ty + 0.5) * TILE_PX + bob);
+    drawFallbackItem(ctx, item.kind, (item.tx + 0.5) * TILE_PX, (item.ty + 1) * TILE_PX + bob);
   }
 }
 
-/** 색 배경 + 도형 하나로 아이템을 그린다 */
-function drawItemGlyphTile(
+/**
+ * 그림이 없는 아이템을 직접 그린다.
+ *
+ * 원본 에셋에는 아이템이 4종(물풍선·물물약·롤러·물약)뿐이라
+ * 바늘·해골·방패는 그릴 그림이 없다.
+ *
+ * 예전에는 색 배경 사각형에 흰 도형을 얹었는데, 그러면 게임 오브젝트가 아니라
+ * **UI 버튼처럼** 보여서 스프라이트 아이템 옆에서 유독 튀었다.
+ * 배경 상자를 없애고 스프라이트와 같은 무게감으로 그린다:
+ * 비슷한 크기(약 42×56), 발밑 그림자, 짙은 외곽선, 위쪽 하이라이트.
+ */
+function drawFallbackItem(
   ctx: CanvasRenderingContext2D,
   kind: number,
   cx: number,
-  cy: number,
+  footY: number,
 ): void {
-  const half = TILE_PX * 0.3;
+  const w = 42;
+  const h = 56;
+  const top = footY - h;
+  const mid = top + h / 2;
 
-  ctx.fillStyle = 'rgb(0 0 0 / 0.3)';
+  ctx.save();
+
+  // 스프라이트 아이템에도 그림자가 들어 있어 없으면 떠 보인다
+  ctx.fillStyle = 'rgb(0 0 0 / 0.28)';
   ctx.beginPath();
-  ctx.ellipse(cx, cy + half + 4, half * 0.8, half * 0.28, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, footY - 3, w * 0.36, 5, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = ITEM_COLORS[kind] ?? '#888';
-  roundRect(ctx, cx - half, cy - half, half * 2, half * 2, 5);
-  ctx.fill();
-  ctx.strokeStyle = 'rgb(255 255 255 / 0.35)';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = 'rgb(24 30 42 / 0.85)';
 
-  ctx.fillStyle = '#ffffff';
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 2;
-  drawItemGlyph(ctx, kind, cx, cy, half);
-}
-
-function drawItemGlyph(
-  ctx: CanvasRenderingContext2D,
-  kind: number,
-  cx: number,
-  cy: number,
-  r: number,
-): void {
   switch (kind) {
-    case ItemKind.Bubble:
-      ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2);
-      ctx.fill();
-      break;
-    case ItemKind.Power:
-      ctx.beginPath();
-      ctx.moveTo(cx - r * 0.62, cy);
-      ctx.lineTo(cx + r * 0.62, cy);
-      ctx.moveTo(cx, cy - r * 0.62);
-      ctx.lineTo(cx, cy + r * 0.62);
-      ctx.stroke();
-      break;
-    case ItemKind.Roller:
-      for (const dx of [-r * 0.34, r * 0.14]) {
-        ctx.beginPath();
-        ctx.moveTo(cx + dx, cy - r * 0.42);
-        ctx.lineTo(cx + dx + r * 0.34, cy);
-        ctx.lineTo(cx + dx, cy + r * 0.42);
-        ctx.stroke();
-      }
-      break;
     case ItemKind.Needle:
-      ctx.beginPath();
-      ctx.moveTo(cx - r * 0.4, cy + r * 0.5);
-      ctx.lineTo(cx + r * 0.42, cy - r * 0.5);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(cx + r * 0.42, cy - r * 0.5, r * 0.16, 0, Math.PI * 2);
-      ctx.stroke();
-      break;
-    case ItemKind.Potion:
-      ctx.beginPath();
-      ctx.moveTo(cx - r * 0.2, cy - r * 0.55);
-      ctx.lineTo(cx - r * 0.2, cy - r * 0.15);
-      ctx.lineTo(cx - r * 0.5, cy + r * 0.5);
-      ctx.lineTo(cx + r * 0.5, cy + r * 0.5);
-      ctx.lineTo(cx + r * 0.2, cy - r * 0.15);
-      ctx.lineTo(cx + r * 0.2, cy - r * 0.55);
-      ctx.closePath();
-      ctx.fill();
+      drawNeedle(ctx, cx, top, h);
       break;
     case ItemKind.Skull:
-      ctx.beginPath();
-      ctx.arc(cx, cy - r * 0.1, r * 0.45, Math.PI, 0);
-      ctx.fill();
-      ctx.fillRect(cx - r * 0.45, cy - r * 0.1, r * 0.9, r * 0.4);
-      ctx.fillStyle = '#2b2b33';
-      ctx.beginPath();
-      ctx.arc(cx - r * 0.2, cy - r * 0.16, r * 0.13, 0, Math.PI * 2);
-      ctx.arc(cx + r * 0.2, cy - r * 0.16, r * 0.13, 0, Math.PI * 2);
-      ctx.fill();
+      drawSkull(ctx, cx, mid, w);
       break;
     case ItemKind.Shield:
-      ctx.beginPath();
-      ctx.moveTo(cx, cy - r * 0.55);
-      ctx.lineTo(cx + r * 0.48, cy - r * 0.28);
-      ctx.lineTo(cx + r * 0.48, cy + r * 0.18);
-      ctx.lineTo(cx, cy + r * 0.58);
-      ctx.lineTo(cx - r * 0.48, cy + r * 0.18);
-      ctx.lineTo(cx - r * 0.48, cy - r * 0.28);
-      ctx.closePath();
-      ctx.stroke();
+      drawShield(ctx, cx, mid, w, h);
       break;
+    default:
+      // 혹시 새 아이템이 늘면 최소한 눈에 띄게라도 그린다
+      ctx.fillStyle = ITEM_COLORS[kind] ?? '#888';
+      ctx.beginPath();
+      ctx.arc(cx, mid, w * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
   }
+
+  ctx.restore();
+}
+
+/** 바늘 — 세로로 선 주사기. 갇힘을 한 번 막아준다 */
+function drawNeedle(ctx: CanvasRenderingContext2D, cx: number, top: number, h: number): void {
+  const bodyW = 15;
+  const bodyH = h * 0.52;
+  const bodyTop = top + h * 0.16;
+
+  // 바늘 끝
+  ctx.strokeStyle = 'rgb(24 30 42 / 0.85)';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(cx, bodyTop + bodyH);
+  ctx.lineTo(cx, top + h - 4);
+  ctx.stroke();
+  ctx.strokeStyle = '#dbe6f5';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, bodyTop + bodyH);
+  ctx.lineTo(cx, top + h - 5);
+  ctx.stroke();
+
+  // 몸통
+  ctx.fillStyle = '#cfd9e8';
+  roundRect(ctx, cx - bodyW / 2, bodyTop, bodyW, bodyH, 4);
+  ctx.fill();
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = 'rgb(24 30 42 / 0.85)';
+  ctx.stroke();
+
+  // 안에 든 약
+  ctx.fillStyle = '#6fd3a0';
+  roundRect(ctx, cx - bodyW / 2 + 3, bodyTop + bodyH * 0.42, bodyW - 6, bodyH * 0.46, 2);
+  ctx.fill();
+
+  // 손잡이
+  ctx.fillStyle = '#9fb0c6';
+  roundRect(ctx, cx - bodyW * 0.8, top + h * 0.06, bodyW * 1.6, 7, 3);
+  ctx.fill();
+  ctx.stroke();
+}
+
+/** 해골 — 디버프. 한눈에 "나쁜 것"으로 읽혀야 한다 */
+function drawSkull(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: number): void {
+  const r = w * 0.42;
+
+  ctx.fillStyle = '#e8e4dc';
+  ctx.beginPath();
+  ctx.arc(cx, cy - r * 0.15, r, Math.PI, 0);
+  ctx.lineTo(cx + r, cy + r * 0.45);
+  ctx.lineTo(cx - r, cy + r * 0.45);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // 턱
+  ctx.fillStyle = '#d8d2c6';
+  roundRect(ctx, cx - r * 0.55, cy + r * 0.4, r * 1.1, r * 0.5, 3);
+  ctx.fill();
+  ctx.stroke();
+
+  // 눈구멍
+  ctx.fillStyle = '#2b2b33';
+  ctx.beginPath();
+  ctx.ellipse(cx - r * 0.4, cy - r * 0.15, r * 0.26, r * 0.32, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx + r * 0.4, cy - r * 0.15, r * 0.26, r * 0.32, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + r * 0.05);
+  ctx.lineTo(cx - r * 0.14, cy + r * 0.32);
+  ctx.lineTo(cx + r * 0.14, cy + r * 0.32);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/** 방패 — 잠깐 무적 */
+function drawShield(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+): void {
+  const halfW = w * 0.44;
+  const top = cy - h * 0.34;
+  const bottom = cy + h * 0.36;
+
+  const outline = (): void => {
+    ctx.beginPath();
+    ctx.moveTo(cx, top);
+    ctx.lineTo(cx + halfW, top + h * 0.12);
+    ctx.lineTo(cx + halfW, cy + h * 0.06);
+    ctx.quadraticCurveTo(cx + halfW, bottom - h * 0.06, cx, bottom);
+    ctx.quadraticCurveTo(cx - halfW, bottom - h * 0.06, cx - halfW, cy + h * 0.06);
+    ctx.lineTo(cx - halfW, top + h * 0.12);
+    ctx.closePath();
+  };
+
+  ctx.fillStyle = '#3f9fc4';
+  outline();
+  ctx.fill();
+  ctx.stroke();
+
+  // 위쪽을 밝게 해서 블록과 같은 입체감을 준다
+  ctx.save();
+  outline();
+  ctx.clip();
+  ctx.fillStyle = '#63c6e8';
+  ctx.fillRect(cx - halfW, top, halfW * 2, h * 0.3);
+  ctx.restore();
+
+  // 가운데 십자
+  ctx.fillStyle = '#eaf6ff';
+  ctx.fillRect(cx - 3, top + h * 0.16, 6, h * 0.42);
+  ctx.fillRect(cx - halfW * 0.55, cy - h * 0.04, halfW * 1.1, 6);
 }
 
 function roundRect(
