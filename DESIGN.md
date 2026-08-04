@@ -261,7 +261,7 @@ export const TILE        = 1000;  // sub-units per tile
 export const SPEED_TABLE = [40, 46, 52, 58, 64, 70]; // 2.4 ~ 4.2 타일/초
 
 // 히트박스: 타일보다 작게 잡아야 조작감이 산다
-export const PLAYER_HITBOX = 600;  // 0.6 타일
+export const PLAYER_HITBOX = 800;  // 0.8 타일
 export const CORNER_ASSIST =  60;  // 수직 보정 속도 (units/tick)
 
 export const BUBBLE_FUSE     = 180; // 3.0초
@@ -271,6 +271,17 @@ export const INVULN_DURATION =  60; // 1.0초
 export const ESCAPE_THRESHOLD = 12; // 방향키 연타 횟수
 export const SUDDEN_DEATH_AT = 60 * 180; // 3분
 ```
+
+### 히트박스는 그림 크기와 맞물린다
+
+처음엔 0.6타일(31px)로 잡았는데, 캐릭터 그림이 64px이라 **벽에 딱 붙어도
+그림이 16px씩 벽 안으로 파묻혔다** — 타일의 31%다. 조작은 멀쩡한데 눈에는 어긋나 보인다.
+
+참고 프로젝트는 충돌 박스(20px)와 별개로 `_BODY_WIDTH = 42`(0.81타일)라는
+"몸통" 크기를 따로 들고 있었다. 그 값에 맞춰 0.8타일로 올렸다.
+
+물줄기 피격은 **중심 타일**로 판정하므로 히트박스를 키워도 회피 난이도는 그대로다.
+바뀌는 것은 벽에 닿는 시점과 통로를 스치고 지나갈 때의 여유뿐이다.
 
 ### 조작감의 핵심: 수직축 정렬
 

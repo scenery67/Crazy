@@ -14,8 +14,14 @@ export const MAP_HEIGHT = 13;
 export const SPEED_TABLE: readonly number[] = [40, 46, 52, 58, 64, 70];
 export const MAX_SPEED_LEVEL = SPEED_TABLE.length - 1;
 
-/** 타일보다 작게 잡아야 조작감이 산다 */
-export const PLAYER_HITBOX = 600;
+/**
+ * 타일보다 작게 잡아야 조작감이 산다. 다만 너무 작으면 그림이 벽에 파묻힌다.
+ *
+ * 0.6타일(31px)일 때는 캐릭터 그림(64px)이 벽 안으로 16px씩 들어갔다 — 타일의 31%다.
+ * 참고 프로젝트의 "몸통" 크기(42/52 ≈ 0.81타일)에 맞춰 그림 가장자리와 벽이
+ * 거의 맞닿게 했다. 물줄기 피격은 중심 타일로 판정하므로 회피 난이도는 그대로다.
+ */
+export const PLAYER_HITBOX = 800;
 /**
  * 코너 어시스트 보정 속도 (units per tick).
  * 진행 방향이 막혔을 때 열린 레인 중심으로 미끄러지는 속도.
