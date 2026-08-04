@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { BUBBLE_FUSE, WATER_DURATION } from '../src/constants.js';
-import { getTile } from '../src/map.js';
+import { getTile, setTile, toTile } from '../src/map.js';
 import { step, stepMany } from '../src/sim.js';
-import { Tile, WaterKind } from '../src/types.js';
-import { addBubble, idle, place, makeState, waterAt } from './helpers.js';
+import { Dir, PlayerStatus, Tile, WaterKind } from '../src/types.js';
+import { addBubble, hold, idle, place, makeState, waterAt } from './helpers.js';
 
 /** 7x7 빈 방. 가운데는 (3,3) */
 const ROOM = [
@@ -108,10 +108,29 @@ describe('폭발과 물줄기', () => {
     addBubble(s, 1, 1, { fuse: 1, power: 3 });
     step(s, idle);
 
-    expect(getTile(s, 2, 1)).toBe(Tile.Empty);
+    // 즉시 열리지 않는다. 물줄기가 걷힐 때까지 막혀 있다
+    expect(getTile(s, 2, 1)).toBe(Tile.Breaking);
     expect(waterAt(s, 2, 1)).toBe(true);
     // 부순 블록 너머로는 뚫고 가지 않는다
     expect(waterAt(s, 3, 1)).toBe(false);
+
+    stepMany(s, WATER_DURATION, () => idle);
+    expect(getTile(s, 2, 1)).toBe(Tile.Empty);
+    expect(waterAt(s, 2, 1)).toBe(false);
+  });
+
+  it('부서지는 블록은 다음 폭발도 막는다', () => {
+    // 물줄기를 직접 깔면 어느 폭발의 것인지 헷갈리므로 타일만 만들어 둔다
+    const s = makeState(['#######', '#.x...#', '#######'], [[1, 1]]);
+    setTile(s, 2, 1, Tile.Breaking);
+
+    addBubble(s, 5, 1, { fuse: 1, power: 5 });
+    step(s, idle);
+
+    expect(waterAt(s, 3, 1)).toBe(true);
+    // 부서지는 중인 블록을 뚫고 나가지 않는다
+    expect(waterAt(s, 2, 1)).toBe(false);
+    expect(waterAt(s, 1, 1)).toBe(false);
   });
 
   it('물줄기는 WATER_DURATION 뒤에 사라진다', () => {
@@ -132,6 +151,44 @@ describe('폭발과 물줄기', () => {
 
     stepMany(s, BUBBLE_FUSE, () => idle);
     expect(s.players[0]!.bubblesPlaced).toBe(0);
+  });
+});
+
+describe('부서진 블록 자리로 빨려 들어가 죽지 않는다', () => {
+  /**
+   *   # # # # #
+   *   # o x P #    o=물풍선  x=파괴 가능 블록  P=플레이어
+   *   # # # # #
+   *
+   * 벽 반대편의 플레이어는 물줄기 사거리 밖이라 안전하다.
+   * 블록이 즉시 사라지면 벽을 밀고 있던 플레이어가 빨려 들어가
+   * 남아 있는 물줄기에 갇힌다 — 예고도 반응 시간도 없는 죽음이다.
+   */
+  const WALL = ['#####', '#.x.#', '#####'];
+
+  it('물줄기가 걷힐 때까지는 들어갈 수 없다', () => {
+    const s = makeState(WALL, [[3, 1]]);
+    addBubble(s, 1, 1, { fuse: 1, power: 1 });
+
+    // 블록을 향해 계속 밀면서 폭발을 맞는다
+    stepMany(s, WATER_DURATION - 2, () => hold(Dir.Left));
+
+    expect(s.players[0]!.alive).toBe(true);
+    expect(s.players[0]!.status).toBe(PlayerStatus.Normal);
+    // 아직 부서지는 중이라 원래 블록 자리를 넘어가지 못한다
+    expect(toTile(s.players[0]!.x)).toBe(3);
+  });
+
+  it('물줄기가 걷힌 뒤에는 안전하게 지나간다', () => {
+    const s = makeState(WALL, [[3, 1]]);
+    addBubble(s, 1, 1, { fuse: 1, power: 1 });
+
+    stepMany(s, WATER_DURATION + 120, () => hold(Dir.Left));
+
+    expect(s.players[0]!.alive).toBe(true);
+    expect(s.players[0]!.status).toBe(PlayerStatus.Normal);
+    // 이제 열렸으므로 통과했어야 한다
+    expect(toTile(s.players[0]!.x)).toBeLessThan(3);
   });
 });
 

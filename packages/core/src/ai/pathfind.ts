@@ -1,5 +1,5 @@
 import { getTile } from '../map.js';
-import { Dir, DIR_VECTORS, Tile, type GameState } from '../types.js';
+import { Dir, DIR_VECTORS, isSolidTile, type GameState } from '../types.js';
 
 export const UNREACHABLE = -1;
 
@@ -82,6 +82,5 @@ export function firstStep(state: GameState, f: Flood, goal: number): Dir | null 
 
 /** 지형만 보는 통행 가능 여부. 물풍선은 호출부가 따로 판단한다 */
 export function isWalkableTile(state: GameState, tx: number, ty: number): boolean {
-  const tile = getTile(state, tx, ty);
-  return tile !== Tile.Hard && tile !== Tile.Soft;
+  return !isSolidTile(getTile(state, tx, ty));
 }

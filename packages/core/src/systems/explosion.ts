@@ -29,7 +29,15 @@ function ageWaters(state: GameState): void {
   let keep = 0;
   for (const water of state.waters) {
     water.ticksLeft--;
-    if (water.ticksLeft > 0) state.waters[keep++] = water;
+    if (water.ticksLeft > 0) {
+      state.waters[keep++] = water;
+      continue;
+    }
+    // 물줄기가 걷히는 순간에야 부서진 블록 자리가 열린다.
+    // 물줄기가 남아 있는 동안 열어주면 피할 수 없는 죽음이 생긴다
+    if (getTile(state, water.tx, water.ty) === Tile.Breaking) {
+      setTile(state, water.tx, water.ty, Tile.Empty);
+    }
   }
   state.waters.length = keep;
 }
@@ -60,14 +68,15 @@ function detonate(state: GameState, initial: readonly Bubble[]): void {
         const ty = bubble.ty + dy * dist;
         const tile = getTile(state, tx, ty);
 
-        // 파괴 불가 블록 앞에서 멈춘다. 물줄기도 생기지 않는다
-        if (tile === Tile.Hard) break;
+        // 파괴 불가 블록, 그리고 이미 부서지는 중인 블록 앞에서 멈춘다
+        if (tile === Tile.Hard || tile === Tile.Breaking) break;
 
-        // 파괴 가능 블록은 부수고 거기서 멈춘다 (뚫고 지나가지 않는다)
+        // 파괴 가능 블록은 부수고 거기서 멈춘다 (뚫고 지나가지 않는다).
+        // 다만 즉시 열리지는 않는다 — 물줄기가 걷힐 때까지 Breaking으로 막아둔다
         if (tile === Tile.Soft) {
-          setTile(state, tx, ty, Tile.Empty);
-          // 방금 나온 아이템은 이 폭발에 다시 지워지지 않는다.
-          // 물줄기가 걷힌 뒤 드러나는 것이 원작의 순서다
+          setTile(state, tx, ty, Tile.Breaking);
+          // 아이템은 지금 굴려서 놓아둔다. 타일이 막혀 있는 동안에는 주울 수 없고,
+          // 물줄기가 걷혀 열릴 때 비로소 드러난다
           maybeDropItem(state, rng, tx, ty);
           emitWater(state, tx, ty, bubble.ownerId, WaterKind.Tip, dir as Dir);
           break;

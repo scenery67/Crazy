@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TICK_RATE } from '../src/constants.js';
+import { TICK_RATE, WATER_DURATION } from '../src/constants.js';
 import { playerTile } from '../src/geometry.js';
 import { createInitialState, getTile, soloTeams } from '../src/map.js';
 import { Rng } from '../src/rng.js';
@@ -124,18 +124,23 @@ describe('통합 — 실제 맵에서 장시간 시뮬레이션', () => {
     const state = createInitialState({ seed: 2024, teams: soloTeams(4) });
     const softStart = state.map.filter((t) => t === Tile.Soft).length;
 
-    // 플레이어를 치워두고 맵 전체를 훑어 물풍선을 터뜨린다
+    // 플레이어를 치워두고 맵 전체를 훑어 물풍선을 터뜨린다.
+    // 부서지는 중인 블록이 폭발을 막으므로, 물줄기가 걷히길 기다렸다 여러 번 훑는다
     for (const p of state.players) p.alive = false;
     // 뒤따르는 폭발이 앞서 떨어진 아이템을 지우므로(의도된 규칙),
     // 최종 개수가 아니라 도중에 나왔는지를 본다
     let peakItems = 0;
-    for (let ty = 1; ty < state.height - 1; ty++) {
-      for (let tx = 1; tx < state.width - 1; tx++) {
-        if (getTile(state, tx, ty) !== Tile.Empty) continue;
-        state.bubbles.push({ id: state.nextBubbleId++, ownerId: 0, tx, ty, fuse: 1, power: 2 });
-        step(state, []);
-        peakItems = Math.max(peakItems, state.items.length);
+    for (let pass = 0; pass < 6; pass++) {
+      for (let ty = 1; ty < state.height - 1; ty++) {
+        for (let tx = 1; tx < state.width - 1; tx++) {
+          if (getTile(state, tx, ty) !== Tile.Empty) continue;
+          state.bubbles.push({ id: state.nextBubbleId++, ownerId: 0, tx, ty, fuse: 1, power: 2 });
+          step(state, []);
+          peakItems = Math.max(peakItems, state.items.length);
+        }
       }
+      // 부서지는 중인 블록이 완전히 열릴 때까지 기다린다
+      for (let i = 0; i <= WATER_DURATION; i++) step(state, []);
     }
 
     expect(state.map.filter((t) => t === Tile.Soft).length).toBe(0);

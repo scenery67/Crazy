@@ -80,7 +80,7 @@ function forEachBlastTile(
       const ty = bubble.ty + dy * dist;
       const tile = getTile(state, tx, ty);
 
-      if (tile === Tile.Hard) break;
+      if (tile === Tile.Hard || tile === Tile.Breaking) break;
       if (tile === Tile.Soft) {
         visit(tx, ty);
         break;

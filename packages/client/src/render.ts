@@ -202,9 +202,22 @@ function renderSprites(
   for (let ty = 0; ty < state.height; ty++) {
     for (let tx = 0; tx < state.width; tx++) {
       const tile = state.map[ty * state.width + tx];
-      if (tile !== Tile.Hard && tile !== Tile.Soft) continue;
-      const sheet = tile === Tile.Hard ? sp.hardBlock : sp.softBlock;
+      if (tile !== Tile.Hard && tile !== Tile.Soft && tile !== Tile.Breaking) continue;
+
       const footY = (ty + 1) * TILE_PX;
+      if (tile === Tile.Breaking) {
+        // 남은 물줄기 수명이 곧 부서지는 진행도다
+        const water = state.waters.find((w) => w.tx === tx && w.ty === ty);
+        const progress = water ? 1 - water.ticksLeft / WATER_DURATION : 1;
+        const frame = Math.floor(progress * sp.softPop.frames);
+        tall.push({
+          footY,
+          paint: () => drawFrame(ctx, sp.softPop, frame, (tx + 0.5) * TILE_PX, footY + 6),
+        });
+        continue;
+      }
+
+      const sheet = tile === Tile.Hard ? sp.hardBlock : sp.softBlock;
       tall.push({
         footY,
         paint: () => drawFrame(ctx, sheet, 0, (tx + 0.5) * TILE_PX, footY + 6),
@@ -309,6 +322,12 @@ function drawTiles(ctx: CanvasRenderingContext2D, state: GameState): void {
         drawBlock(ctx, x, y, PALETTE.hardTop, PALETTE.hardBody, PALETTE.hardEdge);
       } else if (tile === Tile.Soft) {
         drawBlock(ctx, x, y, PALETTE.softTop, PALETTE.softBody, PALETTE.softEdge);
+      } else if (tile === Tile.Breaking) {
+        // 아직 막혀 있다는 걸 보여줘야 한다. 흐리게 그려 부서지는 중임을 알린다
+        ctx.save();
+        ctx.globalAlpha = 0.45;
+        drawBlock(ctx, x, y, PALETTE.softTop, PALETTE.softBody, PALETTE.softEdge);
+        ctx.restore();
       } else {
         ctx.strokeStyle = PALETTE.gridLine;
         ctx.lineWidth = 1;

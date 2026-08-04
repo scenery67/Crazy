@@ -30,8 +30,21 @@ export const Tile = {
   Hard: 1,
   /** 물줄기로 파괴 가능. 아이템 드랍 */
   Soft: 2,
+  /**
+   * 부서지는 중. 물줄기가 걷힐 때까지 **여전히 막혀 있다.**
+   *
+   * 블록이 즉시 사라지면, 벽 반대편에서 벽을 밀고 있던 플레이어가
+   * 부서지는 순간 빨려 들어가 남아 있는 물줄기에 갇힌다.
+   * 예고도 반응 시간도 없는 죽음이라 반드시 막아야 한다.
+   */
+  Breaking: 3,
 } as const;
 export type Tile = (typeof Tile)[keyof typeof Tile];
+
+/** 플레이어와 물줄기를 모두 막는 타일인가 */
+export function isSolidTile(tile: Tile): boolean {
+  return tile === Tile.Hard || tile === Tile.Soft || tile === Tile.Breaking;
+}
 
 export const PlayerStatus = {
   Normal: 0,

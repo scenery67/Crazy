@@ -5,7 +5,7 @@ import { effectiveSpeed } from '../stats.js';
 import {
   Dir,
   PlayerStatus,
-  Tile,
+  isSolidTile,
   type GameState,
   type InputFrame,
   type Player,
@@ -22,8 +22,7 @@ import {
  *   - 설치 순간 같은 타일에 있던 다른 플레이어도 갇히지 않는다
  */
 function isBlocked(state: GameState, p: Player, tx: number, ty: number): boolean {
-  const tile = getTile(state, tx, ty);
-  if (tile === Tile.Hard || tile === Tile.Soft) return true;
+  if (isSolidTile(getTile(state, tx, ty))) return true;
 
   for (const b of state.bubbles) {
     if (b.tx === tx && b.ty === ty) return !overlapsTile(p, tx, ty);
