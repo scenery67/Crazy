@@ -131,6 +131,27 @@ describe('코너 어시스트 / 레인 정렬', () => {
     expect(s.players[0]!.x).toBe(2 * TILE - HALF);
   });
 
+  /**
+   *   # # # # #
+   *   # . x . #     위아래에 블록이 있고, 오른쪽은 벽으로 막힌 자리.
+   *   # . P # #     이때 옆 행으로 끌려가면 안 된다 — 그 행은 내 열에서 막혀 있다.
+   *   # . x . #
+   *   # # # # #
+   */
+  it('막혀 있어도 갈 수 없는 옆 행으로 끌려가지 않는다', () => {
+    // 오른쪽은 벽, 위아래는 블록. 옆 행(1, 3)은 내 열에서 막혀 있으므로
+    // 그쪽으로 끌려가면 안 된다
+    const rows = ['#####', '#.x.#', '#..##', '#.x.#', '#####'];
+
+    for (const nudge of [-200, -120, 0, 120, 200]) {
+      const s = makeState(rows, [[2, 2]]);
+      s.players[0]!.y = tileCenter(2) + nudge;
+
+      stepMany(s, 60, () => hold(Dir.Right));
+      expect(s.players[0]!.y).toBe(tileCenter(2));
+    }
+  });
+
   it('세로 이동에도 같은 규칙이 대칭으로 적용된다', () => {
     //   # # # #
     //   # . . #    (1,1)에서 오른쪽으로 가다 두 열에 걸친 채
@@ -140,7 +161,8 @@ describe('코너 어시스트 / 레인 정렬', () => {
     const s = makeState(['####', '#..#', '##.#', '##.#', '####'], [[1, 1]]);
     s.players[0]!.x = tileCenter(1) + 400;
 
-    stepMany(s, 60, () => hold(Dir.Down));
+    // 코너를 도는 데 몇 틱 쓰므로 벽까지 가려면 넉넉히 준다
+    stepMany(s, 90, () => hold(Dir.Down));
     expect(s.players[0]!.x).toBe(tileCenter(2));
     expect(s.players[0]!.y).toBe(4 * TILE - HALF);
   });

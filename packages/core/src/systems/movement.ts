@@ -13,6 +13,15 @@ import {
 } from '../types.js';
 
 /**
+ * 레인 중심에서 이만큼 벗어나야 "두 레인에 걸쳐 있다"고 본다.
+ *
+ * 히트박스로 판정하면 히트박스 크기가 곧 코너 보정의 예민함이 되어버린다.
+ * 실제로 히트박스를 0.6에서 0.8로 키웠더니 기준이 200에서 100으로 반토막 나서,
+ * 통로에서 살짝만 어긋나도 옆 행으로 끌려가 어색해졌다.
+ */
+const STRADDLE_MARGIN = 250;
+
+/**
  * 플레이어 p 입장에서 (tx, ty)가 막혀 있는가.
  *
  * 물풍선은 "지금 그 타일에 겹쳐 있는 플레이어"에게만 뚫려 있다.
@@ -89,19 +98,28 @@ function alignPerpendicular(state: GameState, p: Player, dir: Dir, speed: number
 
   const moving = horizontal ? p.x : p.y;
   const fixed = horizontal ? p.y : p.x;
-  const [lo, hi] = span(fixed);
 
-  let targetLane: number;
+  const lane = laneOf(fixed);
+  const offset = fixed - tileCenter(lane);
+
+  let targetLane = lane;
   let turningCorner = false;
-  if (lo === hi) {
-    targetLane = lo;
-  } else {
+
+  // "두 레인에 걸쳐 있다"를 히트박스로 판정하면 안 된다.
+  // 히트박스를 키울 때마다 코너 보정이 예민해져서, 조금만 어긋나도
+  // 옆 행으로 끌려간다. 히트박스와 무관한 고정 기준을 쓴다.
+  if (Math.abs(offset) > STRADDLE_MARGIN) {
+    const other = offset > 0 ? lane + 1 : lane - 1;
     const ahead = aheadLine(moving, positive);
-    const openLo = !isBlocked(state, p, horizontal ? ahead : lo, horizontal ? lo : ahead);
-    const openHi = !isBlocked(state, p, horizontal ? ahead : hi, horizontal ? hi : ahead);
-    // 한쪽만 열렸으면 그쪽으로 돌아 나간다. 둘 다 같으면 우회 정보가 없으므로 가까운 레인으로.
-    turningCorner = openLo !== openHi;
-    targetLane = turningCorner ? (openLo ? lo : hi) : laneOf(fixed);
+    const openHere = !isBlocked(state, p, horizontal ? ahead : lane, horizontal ? lane : ahead);
+    const openOther = !isBlocked(state, p, horizontal ? ahead : other, horizontal ? other : ahead);
+
+    // 지금 레인이 막혀 있고 옆 레인이 열려 있을 때만 돌아 나간다.
+    // 그 외에는 지금 레인 중심으로 정렬한다
+    if (openOther && !openHere) {
+      targetLane = other;
+      turningCorner = true;
+    }
   }
 
   const delta = tileCenter(targetLane) - fixed;
