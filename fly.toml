@@ -1,0 +1,23 @@
+# Fly.io 배포 설정.
+#   fly launch --no-deploy      (앱 생성, 이 파일을 덮어쓰지 말 것)
+#   fly deploy
+#
+# Fly가 도메인에 TLS를 붙여주므로 클라이언트는 wss://<앱이름>.fly.dev 로 붙는다.
+# GitHub Pages는 https라서 ws:// 평문 연결은 브라우저가 차단한다 — TLS는 선택이 아니다.
+app = "crazy-arcade"
+primary_region = "nrt"   # 도쿄. 한국에서 지연이 가장 낮다
+
+[build]
+  dockerfile = "packages/server/Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # 게임 서버는 상태를 들고 있다. 방이 살아 있는 동안 인스턴스가 꺼지면 판이 사라진다
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

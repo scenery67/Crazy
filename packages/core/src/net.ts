@@ -41,8 +41,10 @@ export type ClientMessage = InputMessage;
 
 export interface WelcomeMessage {
   t: 'welcome';
-  /** 이 접속이 조종할 자리 */
-  playerId: PlayerId;
+  /** 이 접속이 조종할 자리. 방이 꽉 찼으면 null이고 관전만 한다 */
+  playerId: PlayerId | null;
+  /** 실제로 들어간 방 코드 */
+  room: string;
   /** 서버가 스냅샷을 보내는 주기(ms). 클라 보간에 쓴다 */
   snapshotIntervalMs: number;
   state: SerializedState;
@@ -58,7 +60,6 @@ export interface SnapshotMessage {
   ack: number;
 }
 
-/** 자리가 꽉 찼을 때 */
 export interface RejectMessage {
   t: 'reject';
   reason: string;
@@ -67,5 +68,12 @@ export interface RejectMessage {
 export type ServerMessage = WelcomeMessage | SnapshotMessage | RejectMessage;
 
 export const DEFAULT_PORT = 8080;
+export const DEFAULT_ROOM = 'MAIN';
+
+/** 방 코드는 대소문자를 가리지 않고, 주소에 넣기 안전한 문자만 남긴다 */
+export function normalizeRoom(code: string | null | undefined): string {
+  const cleaned = (code ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+  return cleaned || DEFAULT_ROOM;
+}
 /** 스냅샷 주기: 60Hz 시뮬레이션의 3틱마다 = 20Hz */
 export const SNAPSHOT_EVERY_TICKS = 3;

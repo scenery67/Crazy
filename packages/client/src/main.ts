@@ -1,7 +1,9 @@
 import {
   BOT_PRESETS,
   DEFAULT_PORT,
+  DEFAULT_ROOM,
   SUDDEN_DEATH_AT,
+  normalizeRoom,
   TICK_RATE,
   botInput,
   createBot,
@@ -169,27 +171,39 @@ window.addEventListener('keydown', (e) => {
 // ─────────────────────────── 온라인 ───────────────────────────
 
 const serverEl = document.querySelector<HTMLInputElement>('#server');
+const roomEl = document.querySelector<HTMLInputElement>('#room');
 const connectEl = document.querySelector<HTMLButtonElement>('#connect');
 const netStatusEl = document.querySelector<HTMLElement>('#netstatus');
 
 const online = new OnlineSession(() => syncNet());
 
-/** 같은 PC에서 띄운 서버가 기본값. 다른 기기에서는 호스트만 바꾸면 된다 */
+/**
+ * 배포 빌드에는 서버 주소를 주입하고, 없으면 같은 PC에서 띄운 서버를 가리킨다.
+ * https 페이지에서는 ws://가 차단되므로 배포 주소는 반드시 wss:// 여야 한다.
+ */
 if (serverEl) {
+  const injected = import.meta.env.VITE_SERVER_URL;
+  const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
   const host = location.hostname || 'localhost';
-  serverEl.value = `ws://${host}:${DEFAULT_PORT}`;
+  serverEl.value = injected || `${scheme}://${host}:${DEFAULT_PORT}`;
+}
+// 주소에 ?room=ABCD 가 붙어 있으면 그 방으로 — 링크만 보내면 같이 들어올 수 있다
+if (roomEl) {
+  roomEl.value = normalizeRoom(new URLSearchParams(location.search).get('room')) || DEFAULT_ROOM;
 }
 
 function syncNet(): void {
-  const connected = online.status === 'connected';
-  if (connectEl) connectEl.textContent = connected ? '연결 끊기' : '접속';
-  if (serverEl) serverEl.disabled = connected;
+  const busy = online.status === 'connected' || online.status === 'connecting';
+  if (connectEl) connectEl.textContent = busy ? '연결 끊기' : '접속';
+  if (serverEl) serverEl.disabled = busy;
+  if (roomEl) roomEl.disabled = busy;
   if (netStatusEl) {
     netStatusEl.textContent = online.message;
-    netStatusEl.className = online.status === 'error' ? 'bad' : connected ? 'ok' : '';
+    netStatusEl.className =
+      online.status === 'error' ? 'bad' : online.status === 'connected' ? 'ok' : '';
   }
   // 온라인 중에는 로컬 설정이 의미가 없다
-  setupEl?.classList.toggle('locked', connected);
+  setupEl?.classList.toggle('locked', busy);
 }
 
 connectEl?.addEventListener('click', () => {
@@ -200,7 +214,10 @@ connectEl?.addEventListener('click', () => {
     newMatch();
     return;
   }
-  online.connect(serverEl?.value.trim() || `ws://localhost:${DEFAULT_PORT}`);
+  online.connect(
+    serverEl?.value.trim() || `ws://localhost:${DEFAULT_PORT}`,
+    normalizeRoom(roomEl?.value),
+  );
 });
 syncNet();
 

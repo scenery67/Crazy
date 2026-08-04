@@ -50,8 +50,29 @@ npm run dev        # 클라이언트
 탭을 두 개 열면 둘이 같은 판에 들어간다. 최대 4명이고, **빈 자리는 봇이 채운다.**
 사람이 나가면 그 자리를 봇이 이어받는다.
 
+**방 코드**를 넣으면 같은 코드끼리 만난다 (비우면 `MAIN`).
+주소에 `?room=ABCD`를 붙여 링크를 보내도 된다.
+자리(4명)가 차면 거절되지 않고 **관전**으로 들어간다.
+
 다른 기기에서 붙으려면 주소의 `localhost`를 서버 PC의 IP로 바꾸고,
 그 PC에서 **5173(클라이언트)과 8080(서버) 두 포트**를 방화벽에서 열어야 한다.
+
+### 서버 배포 (Fly.io)
+
+```bash
+fly launch --no-deploy    # fly.toml 이 이미 있으므로 덮어쓰지 말 것
+fly deploy
+fly status                # https://<앱>.fly.dev/health 로도 확인 가능
+```
+
+클라이언트를 배포할 때 서버 주소를 주입한다:
+
+```bash
+VITE_SERVER_URL=wss://<앱>.fly.dev npm run build -w @crazy/client
+```
+
+> **서버 주소는 반드시 `wss://`** 여야 한다. GitHub Pages는 https라서
+> 브라우저가 `ws://` 평문 연결을 mixed content로 차단한다.
 
 ```bash
 npm test           # 시뮬레이션 테스트 (봇 vs 봇 헤드리스 대전 포함)

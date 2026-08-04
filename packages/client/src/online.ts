@@ -31,11 +31,20 @@ interface PendingInput {
  */
 export class OnlineSession {
   playerId: PlayerId | null = null;
+  room = '';
   status: Status = 'idle';
   message = '';
   /** 재조정 시 서버 위치와 예측 위치가 얼마나 벌어졌는지 (디버깅용) */
   lastCorrection = 0;
 
+  /** 자리가 없어 관전만 하는 상태 */
+  get isSpectator(): boolean {
+    return this.status === 'connected' && this.playerId === null;
+  }
+
+  private url = '';
+  private retries = 0;
+  private retryTimer: number | null = null;
   private ws: WebSocket | null = null;
   private prev: GameState | null = null;
   private curr: GameState | null = null;
@@ -49,15 +58,21 @@ export class OnlineSession {
 
   constructor(private readonly onChange: () => void) {}
 
-  connect(url: string): void {
-    this.disconnect();
+  connect(url: string, room: string): void {
+    this.stop();
+    this.url = `${url}${url.includes('?') ? '&' : '?'}room=${encodeURIComponent(room)}`;
+    this.retries = 0;
+    this.open();
+  }
+
+  private open(): void {
     this.status = 'connecting';
-    this.message = '접속 중…';
+    this.message = this.retries > 0 ? `재접속 시도 ${this.retries}…` : '접속 중…';
     this.onChange();
 
     let ws: WebSocket;
     try {
-      ws = new WebSocket(url);
+      ws = new WebSocket(this.url);
     } catch {
       this.fail('주소가 올바르지 않습니다');
       return;
@@ -65,24 +80,53 @@ export class OnlineSession {
     this.ws = ws;
 
     ws.onmessage = (e) => this.receive(String(e.data));
-    ws.onerror = () => this.fail('접속에 실패했습니다');
+    ws.onerror = () => {
+      /* onclose가 뒤따르므로 여기서는 처리하지 않는다 */
+    };
     ws.onclose = () => {
-      if (this.status === 'connected') this.fail('서버와 연결이 끊어졌습니다');
-      else if (this.status === 'connecting') this.fail('서버에 닿지 못했습니다');
+      this.ws = null;
+      this.retry();
     };
   }
 
+  /**
+   * 끊기면 다시 붙는다. 같은 자리로 돌아간다는 보장은 없다 —
+   * 서버가 빈 자리를 순서대로 주므로 다른 번호를 받을 수 있다.
+   */
+  private retry(): void {
+    if (this.retries >= 5) {
+      this.fail('서버에 닿지 못했습니다');
+      return;
+    }
+    this.reset();
+    this.retries++;
+    const delay = Math.min(8000, 1000 * 2 ** (this.retries - 1));
+    this.status = 'connecting';
+    this.message = `연결 끊김 — ${delay / 1000}초 후 재시도`;
+    this.onChange();
+    this.retryTimer = window.setTimeout(() => this.open(), delay);
+  }
+
   disconnect(): void {
+    this.stop();
+    this.status = 'idle';
+    this.message = '';
+  }
+
+  private stop(): void {
+    if (this.retryTimer !== null) {
+      clearTimeout(this.retryTimer);
+      this.retryTimer = null;
+    }
     const ws = this.ws;
     this.ws = null;
     this.reset();
     if (ws) {
       ws.onclose = null;
       ws.onerror = null;
+      ws.onmessage = null;
       ws.close();
     }
-    this.status = 'idle';
-    this.message = '';
   }
 
   get isLive(): boolean {
@@ -178,9 +222,14 @@ export class OnlineSession {
 
     if (msg.t === 'welcome') {
       this.playerId = msg.playerId;
+      this.room = msg.room;
       this.intervalMs = msg.snapshotIntervalMs;
       this.status = 'connected';
-      this.message = `${msg.playerId + 1}P로 참가`;
+      this.retries = 0;
+      this.message =
+        msg.playerId === null
+          ? `${msg.room} 관전 중 (자리 없음)`
+          : `${msg.room} · ${msg.playerId + 1}P`;
       this.curr = deserializeState(msg.state);
       this.prev = null;
       this.predicted = cloneState(this.curr);
@@ -211,8 +260,7 @@ export class OnlineSession {
   }
 
   private fail(message: string): void {
-    this.ws = null;
-    this.reset();
+    this.stop();
     this.status = 'error';
     this.message = message;
     this.onChange();
