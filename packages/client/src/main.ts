@@ -15,9 +15,13 @@ import {
   type GameState,
   type TeamId,
 } from '@crazy/core';
+import { GameAudio } from './audio.js';
+import { Corpses } from './corpses.js';
+import { EventDetector } from './events.js';
 import { Keyboard } from './input.js';
 import { OnlineSession } from './online.js';
-import { createViewport, render, type Viewport } from './render.js';
+import { Particles } from './particles.js';
+import { TILE_PX, createViewport, render, type Viewport } from './render.js';
 import { loadSprites, type SpriteSet } from './sprites.js';
 
 /** 키보드에 묶인 최대 인원. 0번=방향키, 1번=WASD */
@@ -41,6 +45,12 @@ function teamsForMode(): TeamId[] {
 }
 
 const TEAM_LABELS = ['A', 'B', 'C', 'D'];
+
+/** 소리·파티클은 시뮬레이션을 건드리지 않는다. 상태 차이에서 읽어낼 뿐이다 */
+const events = new EventDetector();
+const audio = new GameAudio();
+const particles = new Particles();
+const corpses = new Corpses();
 
 /**
  * 사람이 잡고 있는 자리. 렌더러가 사용자 캐릭터와 봇 캐릭터를 갈라 그리는 데 쓴다.
@@ -68,6 +78,7 @@ const statsEl = document.querySelector<HTMLElement>('#stats');
 const phaseEl = document.querySelector<HTMLElement>('#phase');
 const corrEl = document.querySelector<HTMLElement>('#corr');
 const corrBoxEl = document.querySelector<HTMLElement>('#corrbox');
+const muteEl = document.querySelector<HTMLElement>('#mute');
 
 const PLAYER_COLORS = ['#ef5b5b', '#4fa3f7', '#5bd08a', '#f2c14e'];
 const SKULL_LABELS = ['', '느림', '풍선↓', '강제설치'];
@@ -130,6 +141,10 @@ function newMatch(): void {
   state = createInitialState({ seed, teams: teamsForMode() });
   viewport = createViewport(canvas!, state, sprites);
   spawnBots();
+  // 새 판의 상태 차이를 이벤트로 읽으면 소리와 파티클이 한꺼번에 터진다
+  events.reset();
+  particles.clear();
+  corpses.clear();
   if (seedEl) seedEl.textContent = String(seed);
   syncSetup();
 }
@@ -170,7 +185,16 @@ setupEl?.addEventListener('click', (e) => {
 });
 syncSetup();
 
+// 브라우저는 사용자가 화면을 건드리기 전에는 소리를 못 내게 한다
+for (const evt of ['keydown', 'pointerdown'] as const) {
+  window.addEventListener(evt, () => audio.unlock(), { once: false });
+}
+
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyM') {
+    audio.muted = !audio.muted;
+    if (muteEl) muteEl.textContent = audio.muted ? '음소거' : '켜짐';
+  }
   if (online.isLive || online.status === 'connecting') return; // 온라인에서는 서버가 판을 정한다
   if (e.code === 'KeyR') newMatch();
   if (e.code === 'Digit1' || e.code === 'Digit2') {
@@ -266,7 +290,28 @@ function frame(now: number): void {
   if (ticksThisFrame >= MAX_CATCHUP_TICKS) accumulator = 0;
 
   const shown = online.isLive ? (online.view(now) ?? state) : state;
+
+  // 시뮬레이션이 진행된 프레임에만 이벤트를 읽고 파티클을 흘린다.
+  // 렌더 주사율에 묶이면 화면이 빠른 기기에서 파티클이 더 빨리 사라진다
+  if (ticksThisFrame > 0) {
+    const locals = localPlayerIds();
+    const fired = events.detect(shown, locals);
+    if (fired.length > 0) {
+      audio.play(fired);
+      particles.spawn(fired, TILE_PX);
+      for (const e of fired) {
+        if (e.t === 'death') corpses.spawn(e.x, e.y, TILE_PX);
+      }
+    }
+    for (let i = 0; i < ticksThisFrame; i++) {
+      particles.update();
+      corpses.update();
+    }
+  }
+
   render(viewport, shown, localPlayerIds());
+  corpses.draw(viewport.ctx, viewport.sprites);
+  particles.draw(viewport.ctx);
 
   fpsCounter++;
   fpsTimer += delta;

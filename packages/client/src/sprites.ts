@@ -42,6 +42,8 @@ export interface SpriteSet {
   /** 봇 자리. 8열(프레임) x 4행(방향) 한 장짜리 시트 */
   chars: Sheet[];
   trap: Sheet;
+  /** 쓰러져서 사라지기까지의 13프레임 */
+  die: Sheet;
   shadow: Sheet;
   bomb: Sheet;
   /** 폭발 중심 */
@@ -72,6 +74,7 @@ const SPECS = {
   heroLeft: S('player/bazzi/left.png', 6),
   heroRight: S('player/bazzi/right.png', 6),
   trap: S('player/bazzi/trap.png', 13),
+  die: S('player/bazzi/die.png', 13),
   shadow: S('player/shadow.png'),
   bomb: S('bomb/1.png', 4),
   burst: S('bomb/pop.png', 6),
@@ -138,6 +141,7 @@ export async function loadSprites(): Promise<SpriteSet | null> {
       [Dir.Right]: at('heroRight'),
     },
     trap: at('trap'),
+    die: at('die'),
     shadow: at('shadow'),
     bomb: at('bomb'),
     burst: at('burst'),
