@@ -16,7 +16,7 @@ import {
   type GameState,
   type Player,
 } from '@crazy/core';
-import { drawFrame, type Sheet, type SpriteSet } from './sprites.js';
+import { CHAR_ROW, drawFrame, type Sheet, type SpriteSet } from './sprites.js';
 
 /** 원본 스프라이트가 52px 타일 기준이라 1:1로 맞춘다 */
 export const TILE_PX = 52;
@@ -93,23 +93,48 @@ export function createViewport(
  * 시뮬레이션에 "움직이는 중"이라는 상태가 없어서 위치 변화로 판단한다.
  * 여기 있는 값은 게임 규칙에 전혀 영향을 주지 않는다.
  */
-const walkMemory = new Map<number, { x: number; y: number; anim: number; tick: number }>();
+const walkMemory = new Map<number, { x: number; y: number; anim: number; tick: number; still: number }>();
 
-function walkFrame(p: Player, tick: number): { frame: number; moving: boolean } {
-  const prev = walkMemory.get(p.id);
+/**
+ * 좌표가 한 틱 안 변했다고 바로 멈춤으로 보면 안 된다.
+ * 벽에 붙어 있으면 전진은 막히고 레인 정렬만 미세하게 좌표를 흔들어서,
+ * 걷기와 서기가 매 틱 뒤집히며 캐릭터가 떨린다.
+ */
+const STILL_GRACE = 8;
+/** 이만큼 가만히 있으면 그제야 대기 동작으로 넘어간다 */
+const IDLE_POSE_AFTER = 90;
+
+interface WalkPose {
+  frame: number;
+  moving: boolean;
+  idle: boolean;
+}
+
+function walkPose(p: Player, tick: number): WalkPose {
+  let prev = walkMemory.get(p.id);
   if (!prev) {
-    walkMemory.set(p.id, { x: p.x, y: p.y, anim: 0, tick });
-    return { frame: 0, moving: false };
+    prev = { x: p.x, y: p.y, anim: 0, tick, still: 0 };
+    walkMemory.set(p.id, prev);
   }
-  const moving = prev.x !== p.x || prev.y !== p.y;
+
   // 렌더는 화면 주사율대로 도니, 시뮬레이션이 진행된 틱에만 프레임을 넘긴다
   if (tick !== prev.tick) {
-    if (moving) prev.anim++;
+    if (prev.x !== p.x || prev.y !== p.y) {
+      prev.anim++;
+      prev.still = 0;
+    } else {
+      prev.still++;
+    }
     prev.x = p.x;
     prev.y = p.y;
     prev.tick = tick;
   }
-  return { frame: Math.floor(prev.anim / 4), moving };
+
+  return {
+    frame: Math.floor(prev.anim / 4),
+    moving: prev.still < STILL_GRACE,
+    idle: prev.still >= IDLE_POSE_AFTER,
+  };
 }
 
 export function render(vp: Viewport, state: GameState): void {
@@ -238,9 +263,10 @@ function paintPlayer(
   if (trapped) {
     drawFrame(ctx, sp.trap, Math.floor(state.tick / 12), cx, footY + 10);
   } else {
-    const { frame, moving } = walkFrame(p, state.tick);
-    const sheet = moving ? sp.walk[p.facing] : sp.wait;
-    drawFrame(ctx, sheet, moving ? frame : Math.floor(state.tick / 20), cx, footY);
+    const pose = walkPose(p, state.tick);
+    const sheet = sp.chars[p.id % sp.chars.length] ?? sp.chars[0]!;
+    // 멈춰도 바라보던 방향을 유지한다. 정면으로 되돌리면 방향이 튕겨 보인다
+    drawFrame(ctx, sheet, pose.moving ? pose.frame : 0, cx, footY, CHAR_ROW[p.facing]);
   }
 
   ctx.restore();

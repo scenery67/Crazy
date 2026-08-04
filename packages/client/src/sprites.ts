@@ -12,14 +12,25 @@ export interface Sheet {
   img: HTMLImageElement;
   /** 가로로 나열된 프레임 수 */
   frames: number;
+  /** 세로 줄 수. 캐릭터 시트는 줄 하나가 방향 하나다 */
+  rows: number;
   /** 프레임 하나의 크기 */
   fw: number;
   fh: number;
 }
 
+/**
+ * 캐릭터 시트의 세로 줄 순서: 0=왼쪽, 1=위, 2=오른쪽, 3=아래.
+ * 원본 프로젝트의 배치이며, 우리 Dir 열거값과 순서가 다르므로 변환이 필요하다.
+ */
+export const CHAR_ROW: Record<Dir, number> = {
+  [Dir.Left]: 0,
+  [Dir.Up]: 1,
+  [Dir.Right]: 2,
+  [Dir.Down]: 3,
+};
+
 export interface SpriteSet {
-  walk: Record<Dir, Sheet>;
-  wait: Sheet;
   trap: Sheet;
   shadow: Sheet;
   bomb: Sheet;
@@ -32,6 +43,8 @@ export interface SpriteSet {
   hardBlock: Sheet;
   softBlock: Sheet;
   softPop: Sheet;
+  /** 자리(playerId)별 캐릭터. 줄이 방향이다 */
+  chars: Sheet[];
   /** 대응하는 그림이 없는 아이템은 비어 있고, 렌더러가 도형으로 그린다 */
   items: Partial<Record<ItemKind, Sheet>>;
 }
@@ -39,17 +52,13 @@ export interface SpriteSet {
 interface Spec {
   path: string;
   frames: number;
+  rows: number;
 }
 
-const S = (path: string, frames = 1): Spec => ({ path, frames });
+const S = (path: string, frames = 1, rows = 1): Spec => ({ path, frames, rows });
 
 /** 프레임 수는 원본 프로젝트의 imageManager 등록값과 같다 */
 const SPECS = {
-  walkUp: S('player/bazzi/up.png', 8),
-  walkDown: S('player/bazzi/down.png', 8),
-  walkLeft: S('player/bazzi/left.png', 6),
-  walkRight: S('player/bazzi/right.png', 6),
-  wait: S('player/bazzi/wait.png', 3),
   trap: S('player/bazzi/trap.png', 13),
   shadow: S('player/shadow.png'),
   bomb: S('bomb/1.png', 4),
@@ -70,6 +79,11 @@ const SPECS = {
   itemPower: S('item/potion.png', 2),
   itemRoller: S('item/skate.png', 2),
   itemPotion: S('item/potion_make_power_max.png', 2),
+  // 자리마다 다른 캐릭터를 준다. 전원이 같은 모습이면 내가 누군지 알 수 없다
+  char0: S('chars/RedBazzi.png', 8, 4),
+  char1: S('chars/BlueBazzi.png', 8, 4),
+  char2: S('chars/RedDizni.png', 8, 4),
+  char3: S('chars/BlueDizni.png', 8, 4),
 } satisfies Record<string, Spec>;
 
 type SpecKey = keyof typeof SPECS;
@@ -81,8 +95,9 @@ function loadSheet(base: string, spec: Spec): Promise<Sheet> {
       resolve({
         img,
         frames: spec.frames,
+        rows: spec.rows,
         fw: Math.floor(img.naturalWidth / spec.frames),
-        fh: img.naturalHeight,
+        fh: Math.floor(img.naturalHeight / spec.rows),
       });
     img.onerror = () => reject(new Error(`스프라이트 없음: ${spec.path}`));
     img.src = base + spec.path;
@@ -104,13 +119,6 @@ export async function loadSprites(): Promise<SpriteSet | null> {
   const at = (key: SpecKey): Sheet => loaded[keys.indexOf(key)]!;
 
   return {
-    walk: {
-      [Dir.Up]: at('walkUp'),
-      [Dir.Down]: at('walkDown'),
-      [Dir.Left]: at('walkLeft'),
-      [Dir.Right]: at('walkRight'),
-    },
-    wait: at('wait'),
     trap: at('trap'),
     shadow: at('shadow'),
     bomb: at('bomb'),
@@ -137,6 +145,7 @@ export async function loadSprites(): Promise<SpriteSet | null> {
       [ItemKind.Roller]: at('itemRoller'),
       [ItemKind.Potion]: at('itemPotion'),
     },
+    chars: [at('char0'), at('char1'), at('char2'), at('char3')],
   };
 }
 
@@ -151,15 +160,17 @@ export function drawFrame(
   frame: number,
   footX: number,
   footY: number,
+  row = 0,
   scale = 1,
 ): void {
   const i = ((frame % sheet.frames) + sheet.frames) % sheet.frames;
+  const r = Math.min(Math.max(row, 0), sheet.rows - 1);
   const w = sheet.fw * scale;
   const h = sheet.fh * scale;
   ctx.drawImage(
     sheet.img,
     i * sheet.fw,
-    0,
+    r * sheet.fh,
     sheet.fw,
     sheet.fh,
     Math.round(footX - w / 2),
