@@ -83,7 +83,9 @@ const SPECS = {
   trap: S('player/bazzi/trap.png', 13),
   die: S('player/bazzi/die.png', 13),
   shadow: S('player/shadow.png'),
-  bomb: S('bomb/1.png', 4),
+  // 설치된 물풍선도 아이템과 같은 물풍선 그림을 쓴다.
+  // 다만 바닥에 떨어진 아이템과 구분되어야 해서 조금 크게 그린다
+  bomb: S('item/ballon.png', 2, 1, 1.15),
   burst: S('bomb/pop.png', 6),
   waveArmUp: S('wave/up2.png', 11),
   waveArmDown: S('wave/down2.png', 11),
