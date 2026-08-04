@@ -15,7 +15,14 @@ import {
   type GameState,
   type Player,
 } from '@crazy/core';
-import { CHAR_ROW, CHAR_SCALE, drawFrame, type Sheet, type SpriteSet } from './sprites.js';
+import {
+  CHAR_ROW,
+  CHAR_SCALE,
+  drawFrame,
+  trapRow,
+  type Sheet,
+  type SpriteSet,
+} from './sprites.js';
 
 /** 원본 스프라이트가 52px 타일 기준이라 1:1로 맞춘다 */
 export const TILE_PX = 52;
@@ -293,12 +300,12 @@ function paintPlayer(
   ctx.stroke();
 
   if (trapped) {
-    // 남은 시간에 애니메이션을 맞춘다. 틱으로 돌리면 13프레임 시퀀스가 2.6초마다
-    // 처음으로 되감겨서, 갇혀 있는 동안 물방울이 터졌다 되돌아가기를 반복한다.
+    // 남은 시간에 애니메이션을 맞춘다. 틱으로 돌리면 시퀀스가 주기적으로 되감겨서
+    // 갇혀 있는 동안 물방울이 터졌다 되돌아가기를 반복한다.
     // 이렇게 하면 마지막 프레임(터짐)이 죽는 순간에 정확히 한 번 나온다
     const progress = 1 - p.statusTicks / TRAP_DURATION;
     const frame = Math.min(sp.trap.frames - 1, Math.floor(progress * sp.trap.frames));
-    drawFrame(ctx, sp.trap, frame, cx, footY + 10);
+    drawFrame(ctx, sp.trap, frame, cx, footY + 6, trapRow(p.id, isLocal));
   } else {
     const pose = walkPose(p, state.tick);
     // 멈춰도 바라보던 방향을 유지한다. 정면으로 되돌리면 방향이 튕겨 보인다

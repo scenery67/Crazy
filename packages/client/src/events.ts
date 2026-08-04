@@ -16,8 +16,8 @@ export type GameEvent =
   | { t: 'pickup'; tx: number; ty: number; mine: boolean }
   | { t: 'trap'; tx: number; ty: number; mine: boolean }
   | { t: 'rescue'; tx: number; ty: number; mine: boolean }
-  /** 쓰러지는 자리를 정확히 그려야 하므로 sub-unit 좌표도 함께 넘긴다 */
-  | { t: 'death'; tx: number; ty: number; mine: boolean; x: number; y: number };
+  /** 쓰러지는 자리와 캐릭터를 알아야 하므로 좌표와 자리 번호를 함께 넘긴다 */
+  | { t: 'death'; tx: number; ty: number; mine: boolean; x: number; y: number; id: PlayerId };
 
 interface PlayerMark {
   alive: boolean;
@@ -81,7 +81,9 @@ export class EventDetector {
       const tx = Math.floor(p.x / 1000);
       const ty = Math.floor(p.y / 1000);
 
-      if (was.alive && !p.alive) events.push({ t: 'death', tx, ty, mine, x: p.x, y: p.y });
+      if (was.alive && !p.alive) {
+        events.push({ t: 'death', tx, ty, mine, x: p.x, y: p.y, id: p.id });
+      }
       if (p.alive && gearOf(p) > was.gear) events.push({ t: 'pickup', tx, ty, mine });
       if (was.status !== PlayerStatus.Trapped && p.status === PlayerStatus.Trapped) {
         events.push({ t: 'trap', tx, ty, mine });

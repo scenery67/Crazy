@@ -12,16 +12,19 @@ import { drawFrame, type SpriteSet } from './sprites.js';
  */
 
 /** 프레임 하나가 유지되는 틱. 원작 모작의 _DIE_COOLTIME(0.2초)보다 조금 빠르다 */
-const FRAME_TICKS = 8;
-const FRAMES = 13;
+const FRAME_TICKS = 9;
+/** chars/Die.png의 가로 프레임 수 */
+const FRAMES = 8;
 const FALL_TICKS = FRAME_TICKS * FRAMES;
-/** 쓰러진 뒤 점멸하며 사라지는 시간 */
+/** 다 쓰러진 뒤 점멸하며 사라지는 시간 */
 const BLINK_TICKS = 42;
 
 interface Corpse {
   /** 캔버스 픽셀 기준 발밑 위치 */
   footX: number;
   footY: number;
+  /** 사망 시트에서 쓸 줄 (캐릭터별로 다르다) */
+  row: number;
   age: number;
 }
 
@@ -32,10 +35,11 @@ export class Corpses {
     this.items.length = 0;
   }
 
-  spawn(x: number, y: number, tilePx: number): void {
+  spawn(x: number, y: number, tilePx: number, row: number): void {
     this.items.push({
       footX: (x / TILE) * tilePx,
       footY: (y / TILE) * tilePx + tilePx * 0.42,
+      row,
       age: 0,
     });
   }
@@ -64,8 +68,9 @@ export class Corpses {
       }
 
       if (sprites) {
-        const frame = Math.min(FRAMES - 1, Math.floor(c.age / FRAME_TICKS));
-        drawFrame(ctx, sprites.die, frame, c.footX, c.footY);
+        const last = Math.min(FRAMES, sprites.die.frames) - 1;
+        const frame = Math.min(last, Math.floor(c.age / FRAME_TICKS));
+        drawFrame(ctx, sprites.die, frame, c.footX, c.footY, c.row);
       } else {
         // 도형 모드 폴백
         ctx.fillStyle = '#ff9a9a';

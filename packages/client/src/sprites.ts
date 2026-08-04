@@ -42,13 +42,29 @@ export const CHAR_ROW: Record<Dir, number> = {
  */
 export const CHAR_SCALE = 1.3;
 
+/**
+ * 갇힘·사망 시트에서 이 플레이어가 쓸 줄.
+ *
+ * 사용자 캐릭터는 sample1의 빨간 배찌 그림을 쓰므로 항상 빨강배찌 줄(0)이다.
+ * 봇은 자리 번호가 곧 캐릭터 순서라 그대로 줄 번호가 된다.
+ */
+export function deathRow(playerId: number, isLocal: boolean): number {
+  return isLocal ? 0 : playerId % 4;
+}
+
+/** 갇힘 시트는 색 구분이 없어 캐릭터 종류만 고른다 */
+export function trapRow(playerId: number, isLocal: boolean): number {
+  return deathRow(playerId, isLocal) < 2 ? 0 : 1;
+}
+
 export interface SpriteSet {
   /** 사람이 잡는 자리. 방향별로 시트가 따로 있고 크다(64x76) */
   hero: Record<Dir, Sheet>;
   /** 봇 자리. 8열(프레임) x 4행(방향) 한 장짜리 시트 */
   chars: Sheet[];
+  /** 갇힘. 줄 하나가 캐릭터 종류(0=배찌 1=디즈니) */
   trap: Sheet;
-  /** 쓰러져서 사라지기까지의 13프레임 */
+  /** 사망. 줄 하나가 캐릭터+색(0=빨강배찌 1=파랑배찌 2=빨강디즈니 3=파랑디즈니) */
   die: Sheet;
   shadow: Sheet;
   bomb: Sheet;
@@ -80,8 +96,10 @@ const SPECS = {
   heroDown: S('player/bazzi/down.png', 8),
   heroLeft: S('player/bazzi/left.png', 6),
   heroRight: S('player/bazzi/right.png', 6),
-  trap: S('player/bazzi/trap.png', 13),
-  die: S('player/bazzi/die.png', 13),
+  // 갇힘·사망은 캐릭터별로 줄이 나뉜 시트를 쓴다.
+  // 예전에는 배찌 것 하나로 돌려써서, 파란 캐릭터가 갇히면 빨갛게 변했다
+  trap: S('chars/Trapped.png', 16, 2),
+  die: S('chars/Die.png', 8, 4),
   shadow: S('player/shadow.png'),
   bomb: S('bomb/1.png', 4),
   burst: S('bomb/pop.png', 6),

@@ -27,7 +27,7 @@ import { Keyboard, TouchPad } from './input.js';
 import { OnlineSession } from './online.js';
 import { Particles } from './particles.js';
 import { TILE_PX, createViewport, render, type Viewport } from './render.js';
-import { loadSprites, type SpriteSet } from './sprites.js';
+import { deathRow, loadSprites, type SpriteSet } from './sprites.js';
 
 /** 키보드에 묶인 최대 인원. 0번=방향키, 1번=WASD */
 const MAX_LOCAL = 2;
@@ -439,7 +439,7 @@ function frame(now: number): void {
       audio.play(fired);
       particles.spawn(fired, TILE_PX);
       for (const e of fired) {
-        if (e.t === 'death') corpses.spawn(e.x, e.y, TILE_PX);
+        if (e.t === 'death') corpses.spawn(e.x, e.y, TILE_PX, deathRow(e.id, e.mine));
       }
     }
     for (let i = 0; i < ticksThisFrame; i++) {
