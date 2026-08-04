@@ -76,8 +76,10 @@ export function createViewport(
 
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
-  canvas.style.width = `${w}px`;
-  canvas.style.height = `${h}px`;
+  // 표시 크기는 CSS가 정한다. 여기서 px로 박으면 인라인 스타일이 이겨서
+  // 좁은 화면에서 폭만 줄고 높이는 그대로 남아 비율이 깨진다
+  canvas.style.setProperty('--gw', String(w));
+  canvas.style.setProperty('--gh', String(h));
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.imageSmoothingEnabled = false;
 
