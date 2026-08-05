@@ -131,7 +131,16 @@ const corrBoxEl = document.querySelector<HTMLElement>('#corrbox');
 const muteEl = document.querySelector<HTMLElement>('#mute');
 const touchKeyEl = document.querySelector<HTMLElement>('#touchkey');
 
+/**
+ * **팀 색이다. 자리 색이 아니다.**
+ *
+ * 개인전은 전원이 서로 다른 팀이라 넷이 다 다른 색이 되고, 2v2에서는 아군끼리
+ * 같은 색으로 묶인다. 자리 번호로 칠하면 2v2에서 아군을 알아볼 수 없다.
+ * 순서는 render.ts의 TEAM_COLORS와 같은 색상환이다 — 이쪽이 글자용으로 더 진하다.
+ */
 const PLAYER_COLORS = ['#ef5b5b', '#4fa3f7', '#5bd08a', '#f2c14e'];
+const teamColor = (teamId: number): string =>
+  PLAYER_COLORS[teamId % PLAYER_COLORS.length] ?? '#fff';
 const SKULL_LABELS = ['', '느림', '풍선↓', '강제설치'];
 
 /** 능력치가 안 보이면 아이템을 먹었는지조차 알 수 없다 */
@@ -151,11 +160,15 @@ function renderStats(shown: GameState): void {
         : i < localCount
           ? `${i + 1}P`
           : 'BOT';
-      // 2v2에서는 누가 아군인지 한눈에 보여야 구출 플레이가 성립한다
-      const team = mode === 'duo' ? `<span class="team">${TEAM_LABELS[p.teamId]}</span>` : '';
+      // 2v2에서는 누가 아군인지 한눈에 보여야 구출 플레이가 성립한다.
+      // 글자 색이 팀을 따라가고, 팀 딱지에도 같은 색을 칠해 둘이 같은 말을 하게 한다
+      const team =
+        mode === 'duo'
+          ? `<span class="team" style="background:${teamColor(p.teamId)}">${TEAM_LABELS[p.teamId]}</span>`
+          : '';
       return `<span class="p${p.alive ? '' : ' dead'}">
         ${team}
-        <span class="name" style="color:${PLAYER_COLORS[i]}">${label}</span>
+        <span class="name" style="color:${teamColor(p.teamId)}">${label}</span>
         <span>풍선 ${p.bubbleCapacity}</span>
         <span>파워 ${p.power}</span>
         <span>속도 ${p.speedLevel + 1}</span>

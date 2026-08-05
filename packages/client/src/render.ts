@@ -683,7 +683,8 @@ function drawPlayersAsShapes(ctx: CanvasRenderingContext2D, state: GameState): v
     const trapped = p.status === PlayerStatus.Trapped;
     const bodyR = trapped ? r * 0.6 : r;
 
-    ctx.fillStyle = PLAYER_COLORS[p.id % PLAYER_COLORS.length] ?? '#ffffff';
+    // 몸통도 팀 색이다. 자리 번호로 칠하면 2v2에서 아군을 알아볼 수 없다
+    ctx.fillStyle = PLAYER_COLORS[p.teamId % PLAYER_COLORS.length] ?? '#ffffff';
     ctx.beginPath();
     ctx.arc(cx, cy, bodyR, 0, Math.PI * 2);
     ctx.fill();
