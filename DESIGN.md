@@ -1,18 +1,24 @@
 # 크레이지 아케이드 클론 — 설계 문서
 
-> 상태: 초안 v0.1 / 최종 수정 2026-08-03
+> 상태: v1.0 — M1~M8 구현 완료 / 최종 수정 2026-08-05
+>
+> 이 문서는 코드를 따라간다. 결정의 *이유*와 관측된 *수치*를 남기는 것이 목적이고,
+> 규칙과 상태 모델은 `core`의 실제 타입과 맞춰 둔다.
 
 ## 0. 한 줄 요약
 
 격자 기반 4인 대전 액션. 물풍선을 놓아 십자 물줄기로 상대를 **물방울에 가두고**,
-갇힌 상대를 밟아 제거한다. 1단계 목표는 **싱글 플레이어 + AI 봇**, 최종 목표는 온라인 대전.
+갇힌 상대를 밟아 제거한다. 1단계 목표였던 **싱글 플레이어 + AI 봇**과
+최종 목표였던 **온라인 대전**이 모두 들어갔다 (9장).
 
 ---
 
 ## 1. 기술 선택
 
 - **언어/런타임**: TypeScript (strict)
-- **렌더**: Canvas 2D (도형/색상만, 이미지 에셋 없음). 나중에 WebGL·스프라이트로 교체 가능하도록 렌더러를 격리
+- **렌더**: Canvas 2D. 스프라이트를 쓰되 **도형/색상만으로 그리는 경로를 폴백으로 남긴다.**
+  시트를 하나라도 못 불러오면 `loadSprites()`가 `null`을 내고 전체가 도형 모드로 떨어진다 —
+  절반만 그려진 화면이 아무것도 없는 화면보다 나쁘다
 - **빌드**: Vite
 - **테스트**: Vitest (시뮬레이션 코어는 DOM 없이 순수 테스트)
 - **출시 경로**: itch.io(웹) → Tauri 래핑(Steam) → Capacitor(모바일)
@@ -200,7 +206,7 @@ AI 봇         ─┼─→ step() → State ──┼─ 사운드
 - **갇힌 직후 `RESCUE_GRACE`(=물줄기 수명) 동안은 구출 판정을 하지 않는다.**
   물줄기는 0.5초간 남아 있으므로, 이 유예가 없으면 나를 가둔 바로 그 물줄기가
   다음 틱에 나를 곧바로 풀어준다. 물줄기 수명만큼 기다리면 그 물줄기는 반드시 사라져 있다
-- 자력 탈출: 좌우 방향키를 번갈아 누를 때마다 게이지 +1, `ESCAPE_THRESHOLD`(기본 12) 도달 시 탈출
+- **자력 탈출은 없다** (위 참조). 남은 길은 아군 구출 / 물줄기 재명중 / 시간 초과 사망뿐
 - 트랩 상태에서는 이동 불가, 물풍선 설치 불가
 - 탈출/구출 직후 **1초 무적**
 - 트랩된 플레이어의 타일은 다른 플레이어의 통행을 막지 않는다 (밟으러 들어가야 하므로)
@@ -268,7 +274,6 @@ export const BUBBLE_FUSE     = 180; // 3.0초
 export const WATER_DURATION  =  30; // 0.5초
 export const TRAP_DURATION   = 300; // 5.0초
 export const INVULN_DURATION =  60; // 1.0초
-export const ESCAPE_THRESHOLD = 12; // 방향키 연타 횟수
 export const SUDDEN_DEATH_AT = 60 * 180; // 3분
 ```
 
@@ -333,37 +338,48 @@ export const SUDDEN_DEATH_AT = 60 * 180; // 3분
 type GameState = {
   tick: number;
   rng: number;                  // xorshift32 시드
-  phase: 'playing' | 'suddenDeath' | 'over';
-  map: Uint8Array;              // 15*13, TileType
+  phase: Phase;                 // Playing | SuddenDeath | Over (0|1|2)
+  width: number; height: number;
+  map: Uint8Array;              // width*height, Tile
   players: Player[];
   bubbles: Bubble[];
   waters: Water[];
   items: Item[];
+  nextBubbleId: number;         // Bubble id 발급용
+  suddenDeathIndex: number;     // 나선 순서상 다음에 블록이 떨어질 위치
+  winnerTeamId: TeamId | null;  // 진행 중이면 null, 무승부면 -1
 };
 
 type Player = {
   id: PlayerId;
   teamId: TeamId;               // 개인전 = 전원 서로 다른 값
   alive: boolean;
-  x: number; y: number;         // sub-unit 좌표
+  x: number; y: number;         // sub-unit 좌표. 중심점
   facing: Dir;
-  status: 'normal' | 'trapped' | 'invulnerable';
+  status: PlayerStatus;         // Normal | Trapped | Invulnerable
   statusTicks: number;          // 남은 틱
-  escapeGauge: number;
   bubbleCapacity: number;
   bubblesPlaced: number;
   power: number;
   speedLevel: number;
   needles: number;
+  // 일시 효과는 남은 틱만 들고 있다가 stats.ts가 계산 시점에 덮어쓴다 (3.5 참조)
+  potionTicks: number;
+  skullTicks: number;
+  skullKind: SkullKind;
 };
 
 type Bubble  = { id, ownerId, tx, ty, fuse, power };
-type Water   = { tx, ty, ticksLeft, ownerId, kind: 'center' | 'arm' | 'tip' };
+type Water   = { tx, ty, ticksLeft, ownerId, kind: WaterKind, dir: Dir | null };
 type Item    = { tx, ty, kind };
 ```
 
 - `map`은 `Uint8Array` — 상태 스냅샷/전송이 값싸다
 - 엔티티는 배열. id는 단조 증가 정수. 삭제는 swap-remove
+- 열거값은 전부 const 객체 + 정수다. 문자열 유니온을 쓰지 않는 이유는 스냅샷을
+  JSON으로 통째로 보내기 때문이다 (8.3 참조)
+- `Water.dir`은 렌더링 전용이다. 물줄기 그림이 뻗어나간 방향으로 갈리는데,
+  타일 좌표만으로는 그걸 복원할 수 없다
 
 ---
 
@@ -371,36 +387,53 @@ type Item    = { tx, ty, kind };
 
 ```
 crazy/
-├─ DESIGN.md
+├─ DESIGN.md  README.md
 ├─ package.json            (npm workspaces)
+├─ fly.toml                # 서버 배포 (8.8)
 ├─ packages/
 │  ├─ core/                # 순수 TS. DOM 의존 0. 시뮬레이션 전부
 │  │  ├─ src/
 │  │  │  ├─ types.ts
 │  │  │  ├─ constants.ts
 │  │  │  ├─ rng.ts
+│  │  │  ├─ geometry.ts    # 타일 ↔ sub-unit 좌표 변환
 │  │  │  ├─ map.ts         # 맵 생성 / 타일 질의
+│  │  │  ├─ stats.ts       # 일시 효과를 얹은 실효 능력치 (3.5)
 │  │  │  ├─ sim.ts         # step() 진입점
+│  │  │  ├─ net.ts         # 스냅샷 직렬화 + 프로토콜 타입 (8.5)
+│  │  │  ├─ replay.ts      # 시드 + 입력 로그 (7.6)
 │  │  │  ├─ systems/
 │  │  │  │  ├─ movement.ts    # 이동 + 충돌 + 코너 어시스트
 │  │  │  │  ├─ bubble.ts      # 설치 / 신관
 │  │  │  │  ├─ explosion.ts   # 물줄기 전파 + 연쇄
-│  │  │  │  ├─ trap.ts        # 트랩 / 탈출 / 구출 / 밟기
+│  │  │  │  ├─ trap.ts        # 트랩 / 구출 / 밟기
 │  │  │  │  ├─ item.ts        # 드랍 / 획득
-│  │  │  │  └─ victory.ts     # 서든데스 / 승패
+│  │  │  │  ├─ suddenDeath.ts # 나선형 블록 낙하
+│  │  │  │  └─ victory.ts     # 승패 판정
 │  │  │  └─ ai/
 │  │  │     ├─ bot.ts         # GameState -> InputFrame
 │  │  │     ├─ danger.ts      # 위험 맵 (폭발 예정 타일 + 남은 틱)
-│  │  │     └─ pathfind.ts    # BFS
+│  │  │     └─ pathfind.ts    # 시간 인지 BFS
 │  │  └─ test/
-│  └─ client/              # 브라우저
-│     └─ src/
-│        ├─ main.ts        # 게임 루프 (accumulator)
-│        ├─ render.ts      # Canvas 2D
-│        ├─ input.ts       # 키보드 -> InputFrame
-│        └─ debug.ts       # 위험맵/히트박스 오버레이
-└─ (나중) packages/server/  # Node. core 재사용
+│  ├─ client/              # 브라우저
+│  │  └─ src/
+│  │     ├─ main.ts        # 게임 루프 (accumulator) + 설정 UI
+│  │     ├─ render.ts      # Canvas 2D. 스프라이트 + 도형 폴백
+│  │     ├─ sprites.ts     # 시트 규격표 / 로더 / drawFrame
+│  │     ├─ characters.ts  # 자리 → 캐릭터 배정
+│  │     ├─ input.ts       # 키보드 · 터치 -> InputFrame
+│  │     ├─ online.ts      # WebSocket + 예측/재조정 (8.4)
+│  │     ├─ events.ts      # 상태 차이 -> 이벤트
+│  │     ├─ audio.ts       # 샘플 재생 + 합성음 폴백
+│  │     ├─ particles.ts   # 파티클
+│  │     └─ corpses.ts     # 사망 연출
+│  └─ server/              # Node + ws. core의 step()을 60Hz 권위 실행
+│     ├─ src/index.ts      # WebSocketServer + /health
+│     └─ src/room.ts       # 방 하나 = 한 판
 ```
+
+**`client`는 `test/` 대신 `src/` 안에 시험을 둔다.** tsconfig가 `rootDir`을 `src`로
+잡고 있어 형제 디렉터리를 넣을 수 없다. `core`와 관례가 다른 이유는 그것뿐이다.
 
 **규칙: `core`는 `client`를 절대 import하지 않는다.** 이 한 줄이 온라인 확장의 전제조건.
 
@@ -417,11 +450,10 @@ crazy/
 2. **시간 인지 BFS** (`pathfind.ts`) — 거리만으로는 부족하다.
    "도착했을 때 그 타일이 안전한가"를 같이 봐야 물줄기 속으로 걸어 들어가지 않는다.
    그래서 통행 판정이 도착 예정 틱을 함께 받는다
-3. **행동 우선순위** (`bot.ts`)
-   1. 갇혔으면 **탈출 연타** — 게이지는 방향을 *바꿀 때만* 오르므로 매 틱 번갈아 누른다
-   2. 위험하면 **도망** — 다른 건 생각하지 않는다
-   3. 놓을 만하고 **탈출 경로가 있으면** 설치
-   4. **갇힌 아군 구조** → 아이템 → 부술 블록 옆 → 적 쪽 순으로 이동.
+3. **행동 우선순위** (`bot.ts`) — 갇히면 할 수 있는 게 없으므로 목록에 없다
+   1. 위험하면 **도망** — 다른 건 생각하지 않는다
+   2. 놓을 만하고 **탈출 경로가 있으면** 설치
+   3. **갇힌 아군 구조** → 아이템 → 부술 블록 옆 → 적 쪽 순으로 이동.
       구조가 아이템보다 앞인 이유: 아군은 5초 안에 죽지만 아이템은 도망가지 않는다
 4. **탈출 경로 확인** — 가상의 물풍선을 포함한 위험 맵을 만들고, 폭발 전에 닿을 수 있는
    "폭발 예정이 전혀 없는" 타일이 있는지 본다. **이 검사 하나가 봇 품질의 대부분이다**
@@ -562,7 +594,7 @@ JSON 키 이름 때문에 3배 넘게 부풀지만, 20Hz면 클라이언트당 *
 
 ### 8.4 세 단계로 쪼갠다
 
-**1단계 — 예측 없이 서버 권위**
+**1단계 — 예측 없이 서버 권위** ✅
 
 클라는 입력만 보내고 받은 스냅샷을 그리기만 한다. 원격 플레이어는 스냅샷 사이를 보간한다.
 입력이 왕복 지연만큼 늦게 반영되지만 RTT 80ms 이하면 이 장르에선 견딜 만하다.
@@ -620,11 +652,19 @@ TLS를 자동으로 붙여주므로 이 문제가 없다 — 직접 VM에 올리
 
 WebSocket. **JSON으로 시작한다** — 눈으로 읽히는 게 초기 디버깅에서 압도적으로 유리하다.
 
+타입은 `core/src/net.ts`에 있다. 서버와 클라가 같은 정의를 import한다.
+
 ```
-클라 → 서버   { t: tick, m: 0|1|2|3|null, b: boolean }
-서버 → 클라   { t, players, bubbles, waters, items, map? }
-접속 시       { type: 'welcome', playerId, seed, teams, state }
+클라 → 서버   { t: 'input', seq, move, place }              매 틱
+서버 → 클라   { t: 'snapshot', state, ack }                 20Hz (SNAPSHOT_EVERY_TICKS = 3)
+접속 시       { t: 'welcome', playerId | null, room, snapshotIntervalMs, state }
+거절          { t: 'reject', reason }
 ```
+
+`playerId`가 `null`이면 관전이다. `ack`는 서버가 마지막으로 반영한 `seq`이고,
+클라는 이 번호 이후의 입력만 다시 재생한다 (8.4의 2단계).
+`state`는 `SerializedState` — `map`만 `Uint8Array`에서 `number[]`로 바뀐 것이고
+나머지는 `GameState` 그대로다.
 
 ### 8.6 core에 추가로 필요한 것
 
@@ -658,7 +698,9 @@ WebSocket. **JSON으로 시작한다** — 눈으로 읽히는 게 초기 디버
 | ~~**M5** 아이템~~ | ✅ 드랍 테이블, 획득, 일시 효과, 해골 디버프 | 밸런스 확인 |
 | ~~**M6** 봇~~ | ✅ 위험맵, 시간 인지 BFS, 자살 방지 설치 판정, 난이도 3종 | 봇 vs 봇 헤드리스 대전 |
 | ~~**M7** 다듬기~~ | ✅ 서든데스·사운드·파티클·사망 연출·리플레이·모바일 터치 | 실제로 재미있는가 |
-| **M8** 온라인 | `packages/server`, 서버 권위 → 클라 예측 → 방 (8장 참조) | 두 브라우저로 같은 판 |
+| ~~**M8** 온라인~~ | ✅ `packages/server`, 서버 권위 → 클라 예측 → 방·관전·재접속 (8장) | 두 브라우저로 같은 판 |
+
+**로드맵은 여기까지다.** 다음에 무엇을 할지는 10장에 열어두었다.
 
 M6의 **봇 vs 봇 헤드리스 대전**이 중요하다. 렌더 없이 시뮬만 돌려
 "평균 게임 길이", "자멸 비율", "아이템 획득 분포"를 뽑으면 밸런스를 정량적으로 잡을 수 있다.
@@ -682,12 +724,13 @@ M6의 **봇 vs 봇 헤드리스 대전**이 중요하다. 렌더 없이 시뮬�
 
 ### M6 시작 전에 알아둔 것 (통합 테스트에서 관측됨)
 
-방향을 20~60틱씩 유지하며 무작정 돌아다니는 입력기는 **8초 안에 전원 자멸한다.**
-자기 물풍선에 갇히고, 탈출에 필요한 방향 전환 12회를 트랩 시간(5초) 안에 못 채우기 때문이다.
-봇은 최소한 다음 둘을 해야 사람 수준의 생존이 나온다:
+> 아래는 자력 탈출이 남아 있던 시절의 관측이다. 지금은 갇히면 아군만이 꺼내줄 수 있다.
 
-1. **설치 전 탈출 경로 확인** — 놓고 나서 살아나갈 길이 있을 때만 놓는다
-2. **갇혔을 때 연타** — 트랩 상태에서는 방향을 매 틱 번갈아 출력한다 (게이지는 방향 *전환*에만 오른다)
+방향을 20~60틱씩 유지하며 무작정 돌아다니는 입력기는 **8초 안에 전원 자멸한다.**
+자기 물풍선에 갇히기 때문이다. 여기서 얻은 결론 하나는 지금도 유효하다:
+
+**설치 전에 탈출 경로를 확인해야 한다** — 놓고 나서 살아나갈 길이 있을 때만 놓는다.
+자력 탈출이 사라진 지금은 오히려 이 검사 하나에 봇의 생존이 전부 달려 있다.
 
 또한 봇은 이동할 때 **방향을 유지해야 한다.** 매 틱 새 방향을 뽑으면
 레인 정렬이 전진을 상쇄해서 그 자리에서 굳는다.
@@ -697,6 +740,10 @@ M6의 **봇 vs 봇 헤드리스 대전**이 중요하다. 렌더 없이 시뮬�
 ## 10. 미결정 사항
 
 - [x] ~~팀전(2v2) 지원 여부~~ → **지원함.** `teamId`를 초기 모델에 포함 (3.6 참조)
+- [x] ~~캐릭터 선택~~ → **구현함.** 설정 바에서 배찌/디즈니 × 빨강/파랑 넷 중 하나를 고른다.
+      2인 로컬에서는 2P도 따로 고르고, 둘이 같은 것을 골라도 뒷사람이 다음 번호로 밀린다.
+      배정은 `client/src/characters.ts`에 있다. **지금은 겉모습뿐이다** — 아래 참조
+
 - [ ] **캐릭터별 고유 능력** — 참고 모작에서는 시작 능력치와 **상한이 캐릭터마다 다르다**:
 
   | | 물풍선 | 물줄기 | 속도 | 최대 물풍선 | 최대 물줄기 | 최대 속도 |
@@ -704,8 +751,25 @@ M6의 **봇 vs 봇 헤드리스 대전**이 중요하다. 렌더 없이 시뮬�
   | bazzi | 1 | 1 | 5 | 6 | 7 | 9 |
   | dizni | 2 | 2 | 4 | 7 | 8 | 9 |
 
-  "느리지만 물풍선을 많이 놓는" 식의 트레이드오프다. 우리는 전원 동일(1/1/최대 8·8·6)이다.
-  넣는다면 `Player`에 시작값·상한을 실어야 하고, `stats.ts`가 상한을 참조하도록 바꿔야 한다
+  "느리지만 물풍선을 많이 놓는" 식의 트레이드오프다. 우리는 **고르는 것이 외형뿐이고
+  능력치는 전원 동일**(1/1/최대 8·8·6)이다.
+  넣는다면 `Player`에 시작값·상한을 실어야 하고, `stats.ts`가 상한을 참조하도록 바꿔야 한다.
+  캐릭터가 이미 자리마다 갈려 있으므로 붙일 자리는 마련되어 있다
+
+- [ ] **캐릭터 그림의 비대칭** — 0번(빨강 배찌)만 원본에 방향별 큰 시트가 있어
+  1:1로 선명하게 그려지고, 나머지 셋은 44x62 시트를 1.3배로 늘려 쓴다.
+  게다가 갇힘·사망은 0번도 `chars/*` 계열이라 **빨강 배찌는 자기 자신과도 어긋난다**
+  (걸을 때만 다른 시트).
+
+  맞추는 길은 둘 — 나머지 셋의 방향별 시트를 만들거나, `sp.hero`를 버리고 넷을
+  `chars/*`로 통일하거나. 후자가 코드는 훨씬 단순해지지만 제일 좋은 그림을 잃는다
+
+- [ ] **온라인에서 고른 캐릭터가 전달되지 않는다** — 자리 번호가 곧 캐릭터라
+  내 선택은 접속하는 순간 무시된다. 넣으려면 `welcome`만으로는 안 된다:
+  `Room.join()`이 가장 낮은 빈자리를 주고 재접속 시 자리가 바뀌며, 관전자도 받아야 하므로
+  **별도 브로드캐스트 메시지**가 필요하다. `Player`에 실는 쪽은 더 나쁘다 —
+  `replay.test.ts`가 `players`를 통째로 비교하므로 겉모습 값이 결정론 검증에 끼어든다.
+  지금 규모에서는 과하다
 
 - [ ] **맵 레이아웃** — 참고 모작은 **15 × 11**에 손으로 그린 고정 레이아웃을 쓴다
   (`0`=빈칸, `1`=파괴 가능, `2`=파괴 불가). 우리처럼 15×13에 짝수/짝수 격자를 까는
@@ -721,3 +785,18 @@ M6의 **봇 vs 봇 헤드리스 대전**이 중요하다. 렌더 없이 시뮬�
       터치스크린 달린 PC에서도 조작판이 떠버린다 — 그건 "터치가 되는가"이지
       "주 입력장치가 손가락인가"가 아니다. 판정이 애매한 기기를 위해
       실제 손가락이 닿으면 그때 띄우고, `T` 키로 수동 전환도 된다
+
+- [ ] **아무도 안 쓰는 에셋이 약 3.7MB** — `public/`은 통째로 Pages에 올라가므로
+  코드가 참조하지 않아도 배포된다. 8.7의 저작권 노출을 그만큼 넓히는 셈이다.
+  아래는 코드에서 한 번도 불리지 않는 것들이다 (관측 사실이며, 처분은 아직 정하지 않았다):
+
+  | | 파일 | 암시하는 것 |
+  |---|---|---|
+  | 화면 배경 | `login_scene_bg`(1.45MB) · `mode_select_scene_bg`(1.16MB) · `lobby_scene_bg`(915KB) · `play_bg` · `black_bg` | 로그인 → 로비 → 모드선택 흐름. 지금은 바로 판으로 들어간다 |
+  | 배너 | `game_start/{GAME,START}` · `game_over/{GAME,OVER}` | 라운드 시작·종료 연출. 지금은 `drawResult()`가 글자로 그린다 |
+  | 캐릭터 여분 | `player/bazzi/{jump,ready,wait,live,flash_long,flash_short}` | 준비 화면 · 무적 점멸 · 대기 동작 |
+  | 맵 배리에이션 | `tile_2..10` · `object_2..6` · `block_2..9`(+`_pop`) | 타일·블록 변화와 여러 테마. `SPECS`는 `_1`만 등록한다 |
+  | 기타 | `player/{player1,player2,solo_player}` | — |
+
+  반대로 **`public/sounds/`는 디렉터리 자체가 없어** 항상 합성음으로 떨어진다.
+  `audio.ts`는 파일이 있으면 쓰도록 이미 되어 있다 (7.5, README «음원 넣기»)
