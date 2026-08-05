@@ -71,6 +71,16 @@ fly deploy
 fly status                # https://<앱>.fly.dev/health 로도 확인 가능
 ```
 
+서버는 공개 주소에 붙으므로 접속·메시지에 상한이 걸려 있다 (DESIGN 8.9).
+전부 환경 변수로 조절한다:
+
+```
+MAX_ROOMS=50  MAX_CLIENTS=200  MAX_CLIENTS_PER_IP=8  MAX_MESSAGES_PER_SEC=120
+```
+
+> **프록시 뒤인데 `fly-client-ip` 헤더가 없으면** 접속자 전원이 한 주소로 보인다.
+> 그러면 서버 전체가 `MAX_CLIENTS_PER_IP`에 갇히므로 값을 올려야 한다.
+
 클라이언트를 배포할 때 서버 주소를 주입한다:
 
 ```bash

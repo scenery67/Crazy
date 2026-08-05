@@ -1,4 +1,5 @@
-import type { Dir, GameState, PlayerId } from './types.js';
+import { Dir } from './types.js';
+import type { GameState, PlayerId } from './types.js';
 
 /**
  * 직렬화와 통신 규약.
@@ -38,6 +39,53 @@ export interface InputMessage {
 }
 
 export type ClientMessage = InputMessage;
+
+/**
+ * 들어온 문자열을 **믿지 않고** 뜯어본다.
+ *
+ * `JSON.parse(raw) as ClientMessage`는 컴파일 시점의 주장일 뿐 런타임에는 아무것도
+ * 보장하지 않는다. 서버는 네트워크 너머의 아무 문자열이나 받으므로,
+ * 타입이 말하는 모양인지 여기서 실제로 확인해야 한다.
+ *
+ * 특히 `seq`는 스냅샷의 `ack`로 되돌아 나가는 값이라 반드시 안전한 정수여야 한다.
+ *
+ * 규약을 정의한 곳과 검사하는 곳이 붙어 있어야 둘이 따로 놀지 않는다.
+ */
+export function parseClientMessage(raw: string): ClientMessage | null {
+  if (raw.length > MAX_MESSAGE_BYTES) return null;
+
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof data !== 'object' || data === null) return null;
+
+  const msg = data as Record<string, unknown>;
+  if (msg['t'] !== 'input') return null;
+
+  const { seq, move, place } = msg;
+  // NaN·Infinity·소수·2^53 초과를 한 번에 걸러낸다
+  if (!Number.isSafeInteger(seq) || (seq as number) < 0) return null;
+  if (typeof place !== 'boolean') return null;
+  if (move !== null && !isDir(move)) return null;
+
+  return { t: 'input', seq: seq as number, move: move as Dir | null, place };
+}
+
+/** 열거값에서 직접 뽑는다. Dir이 늘어나면 검사도 같이 늘어나야 한다 */
+const DIRS: ReadonlySet<number> = new Set(Object.values(Dir));
+
+function isDir(value: unknown): boolean {
+  return typeof value === 'number' && DIRS.has(value);
+}
+
+/**
+ * 입력 메시지 하나의 상한. 정상 메시지는 40바이트 남짓이라 아주 넉넉한 값이다.
+ * ws의 기본 상한은 100MB이므로 이걸 걸어두지 않으면 한 통으로 서버를 흔들 수 있다.
+ */
+export const MAX_MESSAGE_BYTES = 256;
 
 export interface WelcomeMessage {
   t: 'welcome';
