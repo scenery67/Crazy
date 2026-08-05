@@ -21,13 +21,14 @@ import {
   type TeamId,
 } from '@crazy/core';
 import { GameAudio } from './audio.js';
+import { CHARACTER_COUNT, assignCharacters, characterOf } from './characters.js';
 import { Corpses } from './corpses.js';
 import { EventDetector } from './events.js';
 import { Keyboard, TouchPad } from './input.js';
 import { OnlineSession } from './online.js';
 import { Particles } from './particles.js';
 import { TILE_PX, createViewport, render, type Viewport } from './render.js';
-import { deathRow, loadSprites, type SpriteSet } from './sprites.js';
+import { loadSprites, type SpriteSet } from './sprites.js';
 
 /** 키보드에 묶인 최대 인원. 0번=방향키, 1번=WASD */
 const MAX_LOCAL = 2;
@@ -40,6 +41,20 @@ type Difficulty = keyof typeof BOT_PRESETS;
 let localCount = 1;
 let mode: Mode = 'solo';
 let difficulty: Difficulty = 'normal';
+/** 사람이 고른 캐릭터. 0=빨강배찌 1=파랑배찌 2=빨강디즈니 3=파랑디즈니 */
+let character = 0;
+/**
+ * 2P가 고른 캐릭터. 기본을 반대 종족으로 둔다 —
+ * 같은 배찌의 빨강·파랑은 난전 중에 서로를 구분하지 못한다.
+ */
+let character2 = 2;
+/** 접속·재생 이전이라 여기서는 로컬 배정이 맞다. refreshCharacters()가 이후를 맡는다 */
+let characters = assignCharacters({
+  seats: TOTAL_PLAYERS,
+  humans: localCount,
+  picks: [character, character2],
+  bySeat: false,
+});
 
 /**
  * 개인전은 "전원이 서로 다른 팀"인 특수 케이스다.
@@ -66,7 +81,7 @@ let recorder: ReplayRecorder | null = null;
 let playback: { reader: ReplayReader; ticks: number } | null = null;
 
 /**
- * 사람이 잡고 있는 자리. 렌더러가 사용자 캐릭터와 봇 캐릭터를 갈라 그리는 데 쓴다.
+ * 사람이 잡고 있는 자리. 소리와 파티클이 "내게 일어난 일"을 가리는 데 쓴다.
  * 온라인에서는 내 자리 하나뿐이고, 관전 중이면 비어 있다.
  */
 function localPlayerIds(): ReadonlySet<number> {
@@ -76,6 +91,21 @@ function localPlayerIds(): ReadonlySet<number> {
     return online.playerId === null ? new Set() : new Set([online.playerId]);
   }
   return new Set(Array.from({ length: localCount }, (_, i) => i));
+}
+
+/**
+ * 자리 번호 → 캐릭터 번호.
+ *
+ * 접속 전에 미리 정해둘 수 없으므로 판·접속·재생이 바뀔 때마다 다시 배정한다.
+ * online을 읽으니 모듈 최상위에서 부르면 안 된다 — 선언 순서상 아직 없다.
+ */
+function refreshCharacters(): void {
+  characters = assignCharacters({
+    seats: TOTAL_PLAYERS,
+    humans: localCount,
+    picks: [character, character2],
+    bySeat: playback !== null || online.isLive,
+  });
 }
 
 const MS_PER_TICK = 1000 / TICK_RATE;
@@ -160,6 +190,7 @@ function newMatch(): void {
   viewport = createViewport(canvas!, state, sprites);
   spawnBots();
   playback = null;
+  refreshCharacters();
   recorder = new ReplayRecorder(seed, teams);
   if (replayStatusEl) replayStatusEl.textContent = '';
   // 새 판의 상태 차이를 이벤트로 읽으면 소리와 파티클이 한꺼번에 터진다
@@ -219,16 +250,27 @@ const setupEl = document.querySelector<HTMLElement>('#setup');
 
 /** 현재 설정에 맞춰 버튼 눌림 상태를 표시한다 */
 function syncSetup(): void {
+  // 온라인에서는 자리가 캐릭터를 정한다. 접속 전에 고른 값을 그대로 눌러두면 거짓말이 된다
+  const shownCharacter =
+    online.isLive && online.playerId !== null
+      ? characterOf(characters, online.playerId)
+      : character;
+
   const current: Record<string, string> = {
     mode,
     local: String(localCount),
     difficulty,
+    character: String(shownCharacter),
+    character2: String(character2),
   };
   setupEl?.querySelectorAll<HTMLButtonElement>('button[data-value]').forEach((btn) => {
     const key = btn.closest<HTMLElement>('.group')?.dataset['key'];
     if (!key) return;
     btn.setAttribute('aria-pressed', String(current[key] === btn.dataset['value']));
   });
+  // 2P 선택기는 둘이 앉을 때만 의미가 있다
+  const p2 = setupEl?.querySelector<HTMLElement>('.group[data-key="character2"]');
+  if (p2) p2.hidden = localCount < 2;
 }
 
 setupEl?.addEventListener('click', (e) => {
@@ -237,15 +279,27 @@ setupEl?.addEventListener('click', (e) => {
   const value = btn?.dataset['value'];
   if (!btn || !key || !value) return;
 
+  // 포커스가 남아 있으면 Space(물풍선)가 이 버튼을 다시 누른다
+  btn.blur();
+
+  if (key === 'character' || key === 'character2') {
+    // 화면에서 온 값이라 그대로 믿지 않는다
+    const picked = Number(value);
+    if (!Number.isInteger(picked) || picked < 0 || picked >= CHARACTER_COUNT) return;
+    if (key === 'character') character = picked;
+    else character2 = picked;
+    // 겉모습만 바뀌는 선택이라 판을 갈아엎을 이유가 없다
+    refreshCharacters();
+    syncSetup();
+    return;
+  }
+
   if (key === 'mode') mode = value as Mode;
   if (key === 'local') localCount = Number(value);
   if (key === 'difficulty') difficulty = value as Difficulty;
 
-  // 포커스가 남아 있으면 Space(물풍선)가 이 버튼을 다시 누른다
-  btn.blur();
   newMatch();
 });
-syncSetup();
 
 // 브라우저는 사용자가 화면을 건드리기 전에는 소리를 못 내게 한다
 for (const evt of ['keydown', 'pointerdown'] as const) {
@@ -292,6 +346,8 @@ if (roomEl) {
 }
 
 function syncNet(): void {
+  // 온라인에서는 자리 번호가 곧 캐릭터라 배정이 달라진다
+  refreshCharacters();
   const busy = online.status === 'connected' || online.status === 'connecting';
   if (connectEl) connectEl.textContent = busy ? '연결 끊기' : '접속';
   if (serverEl) serverEl.disabled = busy;
@@ -303,6 +359,8 @@ function syncNet(): void {
   }
   // 온라인 중에는 로컬 설정이 의미가 없다
   setupEl?.classList.toggle('locked', busy);
+  // 접속하면 내 캐릭터가 자리로 정해진다. 눌린 버튼도 따라가야 한다
+  syncSetup();
 }
 
 connectEl?.addEventListener('click', () => {
@@ -318,6 +376,7 @@ connectEl?.addEventListener('click', () => {
     normalizeRoom(roomEl?.value),
   );
 });
+// online이 만들어진 뒤라야 한다. syncNet()이 첫 syncSetup()까지 이어서 부른다
 syncNet();
 
 // ─────────────────────────── 리플레이 ───────────────────────────
@@ -376,6 +435,7 @@ replayFileEl?.addEventListener('change', () => {
     playback = { reader: new ReplayReader(parsed), ticks: parsed.ticks };
     recorder = null;
     bots = [];
+    refreshCharacters();
     events.reset();
     particles.clear();
     corpses.clear();
@@ -439,7 +499,7 @@ function frame(now: number): void {
       audio.play(fired);
       particles.spawn(fired, TILE_PX);
       for (const e of fired) {
-        if (e.t === 'death') corpses.spawn(e.x, e.y, TILE_PX, deathRow(e.id, e.mine));
+        if (e.t === 'death') corpses.spawn(e.x, e.y, TILE_PX, characterOf(characters, e.id));
       }
     }
     for (let i = 0; i < ticksThisFrame; i++) {
@@ -448,7 +508,7 @@ function frame(now: number): void {
     }
   }
 
-  render(viewport, shown, localPlayerIds());
+  render(viewport, shown, characters);
   corpses.draw(viewport.ctx, viewport.sprites);
   particles.draw(viewport.ctx);
 

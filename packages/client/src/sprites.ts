@@ -37,30 +37,26 @@ export const CHAR_ROW: Record<Dir, number> = {
 };
 
 /**
- * 봇 캐릭터 시트는 프레임이 44x62 / 42x57로, 사용자 캐릭터(64x76)보다 작다.
- * 그대로 두면 같은 판에서 봇만 작아 보이므로 키를 맞춘다.
+ * 캐릭터 시트는 프레임이 44x62 / 42x57이라 52px 타일 옆에서 작아 보인다.
+ * 타일 하나보다 조금 크게 보이도록 키운다.
  */
 export const CHAR_SCALE = 1.3;
 
-/**
- * 갇힘·사망 시트에서 이 플레이어가 쓸 줄.
- *
- * 사용자 캐릭터는 sample1의 빨간 배찌 그림을 쓰므로 항상 빨강배찌 줄(0)이다.
- * 봇은 자리 번호가 곧 캐릭터 순서라 그대로 줄 번호가 된다.
- */
-export function deathRow(playerId: number, isLocal: boolean): number {
-  return isLocal ? 0 : playerId % 4;
-}
-
-/** 갇힘 시트는 색 구분이 없어 캐릭터 종류만 고른다 */
-export function trapRow(playerId: number, isLocal: boolean): number {
-  return deathRow(playerId, isLocal) < 2 ? 0 : 1;
+/** 갇힘 시트는 색 구분이 없어 캐릭터 종류(배찌/디즈니)만 고른다 */
+export function trapRow(character: number): number {
+  return character < 2 ? 0 : 1;
 }
 
 export interface SpriteSet {
-  /** 사람이 잡는 자리. 방향별로 시트가 따로 있고 크다(64x76) */
+  /**
+   * 0번 캐릭터(빨강 배찌)만 원본에 방향별 큰 시트가 있다(64x76).
+   *
+   * 나머지 셋에는 대응하는 그림이 없고, 갇힘·사망은 0번도 chars/* 계열을 쓴다.
+   * 그래서 빨강 배찌는 걸을 때만 선명하고 갇히거나 죽으면 다른 시트로 넘어간다 —
+   * 넷을 맞추려면 나머지 셋의 방향별 시트를 만들거나 이쪽을 버려야 한다 (DESIGN §10).
+   */
   hero: Record<Dir, Sheet>;
-  /** 봇 자리. 8열(프레임) x 4행(방향) 한 장짜리 시트 */
+  /** 네 캐릭터. 8열(프레임) x 4행(방향) 한 장짜리 시트 */
   chars: Sheet[];
   /** 갇힘. 줄 하나가 캐릭터 종류(0=배찌 1=디즈니) */
   trap: Sheet;
@@ -124,7 +120,7 @@ const SPECS = {
   itemNeedle: S('item/niddle.png', 1, 1, 1.8),
   itemSkull: S('item/skeleton.png', 1, 1, 1.37),
   itemShield: S('item/shield.png', 1, 1, 1.58),
-  // 봇 자리마다 다른 캐릭터를 준다. 전원이 같은 모습이면 누가 누군지 알 수 없다
+  // 자리마다 다른 캐릭터를 준다. 전원이 같은 모습이면 누가 누군지 알 수 없다
   char0: S('chars/RedBazzi.png', 8, 4),
   char1: S('chars/BlueBazzi.png', 8, 4),
   char2: S('chars/RedDizni.png', 8, 4),

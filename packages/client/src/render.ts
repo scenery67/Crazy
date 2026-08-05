@@ -15,6 +15,7 @@ import {
   type GameState,
   type Player,
 } from '@crazy/core';
+import { characterOf } from './characters.js';
 import {
   CHAR_ROW,
   CHAR_SCALE,
@@ -156,13 +157,17 @@ function walkPose(p: Player, tick: number): WalkPose {
 }
 
 /**
- * @param localIds 사람이 잡고 있는 자리. 이쪽만 사용자 캐릭터로 그린다
+ * @param characters 자리 번호 → 캐릭터 번호. 걷기·갇힘·사망 그림이 모두 여기서 갈린다
  */
-export function render(vp: Viewport, state: GameState, localIds: ReadonlySet<number>): void {
+export function render(
+  vp: Viewport,
+  state: GameState,
+  characters: ReadonlyMap<number, number>,
+): void {
   const { ctx, sprites } = vp;
   ctx.clearRect(0, 0, state.width * TILE_PX, state.height * TILE_PX);
 
-  if (sprites) renderSprites(ctx, state, sprites, localIds);
+  if (sprites) renderSprites(ctx, state, sprites, characters);
   else renderShapes(ctx, state);
 
   if (state.phase === Phase.Over) drawResult(ctx, state);
@@ -180,7 +185,7 @@ function renderSprites(
   ctx: CanvasRenderingContext2D,
   state: GameState,
   sp: SpriteSet,
-  localIds: ReadonlySet<number>,
+  characters: ReadonlyMap<number, number>,
 ): void {
   // 1. 바닥은 전부 깔고 시작한다
   for (let ty = 0; ty < state.height; ty++) {
@@ -247,7 +252,8 @@ function renderSprites(
     if (!p.alive) continue;
     const cx = px(p.x);
     const footY = px(p.y) + TILE_PX * 0.42;
-    tall.push({ footY, paint: () => paintPlayer(ctx, state, sp, p, cx, footY, localIds.has(p.id)) });
+    const character = characterOf(characters, p.id);
+    tall.push({ footY, paint: () => paintPlayer(ctx, state, sp, p, cx, footY, character) });
   }
 
   tall.sort((a, b) => a.footY - b.footY);
@@ -281,7 +287,7 @@ function paintPlayer(
   p: Player,
   cx: number,
   footY: number,
-  isLocal: boolean,
+  character: number,
 ): void {
   const trapped = p.status === PlayerStatus.Trapped;
   const blinking =
@@ -292,7 +298,7 @@ function paintPlayer(
 
   drawFrame(ctx, sp.shadow, 0, cx, footY + 6);
 
-  // 팀 표식 — 스프라이트가 전원 같은 캐릭터라 이게 없으면 아군을 구분할 수 없다
+  // 팀 표식 — 캐릭터는 자리마다 다르지만 팀과는 무관하다. 이게 없으면 아군을 구분할 수 없다
   ctx.strokeStyle = TEAM_COLORS[p.teamId % TEAM_COLORS.length] ?? '#fff';
   ctx.lineWidth = 2.5;
   ctx.beginPath();
@@ -305,15 +311,17 @@ function paintPlayer(
     // 이렇게 하면 마지막 프레임(터짐)이 죽는 순간에 정확히 한 번 나온다
     const progress = 1 - p.statusTicks / TRAP_DURATION;
     const frame = Math.min(sp.trap.frames - 1, Math.floor(progress * sp.trap.frames));
-    drawFrame(ctx, sp.trap, frame, cx, footY + 6, trapRow(p.id, isLocal));
+    drawFrame(ctx, sp.trap, frame, cx, footY + 6, trapRow(character));
   } else {
     const pose = walkPose(p, state.tick);
     // 멈춰도 바라보던 방향을 유지한다. 정면으로 되돌리면 방향이 튕겨 보인다
     const frame = pose.moving ? pose.frame : 0;
-    if (isLocal) {
+    if (character === 0) {
+      // 빨강 배찌만 원본에 방향별 큰 그림이 있어 이쪽이 더 선명하다.
+      // 나머지 셋에는 대응 시트가 없어 넷의 화질이 갈린다 (DESIGN §10)
       drawFrame(ctx, sp.hero[p.facing], frame, cx, footY);
     } else {
-      const sheet = sp.chars[p.id % sp.chars.length] ?? sp.chars[0]!;
+      const sheet = sp.chars[character] ?? sp.chars[0]!;
       drawFrame(ctx, sheet, frame, cx, footY, CHAR_ROW[p.facing], CHAR_SCALE);
     }
   }

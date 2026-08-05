@@ -94,6 +94,10 @@
         gap: 4px;
         align-items: center;
       }
+      /* display:flex가 hidden 속성의 기본 display:none을 덮으므로 다시 눌러준다 */
+      #setup .group[hidden] {
+        display: none;
+      }
       #setup label {
         opacity: 0.6;
         margin-right: 4px;
@@ -264,6 +268,15 @@
           padding-bottom: 20px;
         }
       }
+      #setup button i {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        margin-left: 5px;
+        border-radius: 50%;
+        vertical-align: middle;
+        border: 1px solid rgb(0 0 0 / 0.3);
+      }
       #setup button[aria-pressed='true'] {
         color: #0e1420;
         background: #8ac4ff;
@@ -283,6 +296,21 @@
         <label>사람</label>
         <button type="button" data-value="1">1인</button>
         <button type="button" data-value="2">2인</button>
+      </span>
+      <span class="group" data-key="character">
+        <label>1P</label>
+        <button type="button" data-value="0">배찌<i style="background: #ef5b5b"></i></button>
+        <button type="button" data-value="1">배찌<i style="background: #4fa3f7"></i></button>
+        <button type="button" data-value="2">디즈니<i style="background: #ef5b5b"></i></button>
+        <button type="button" data-value="3">디즈니<i style="background: #4fa3f7"></i></button>
+      </span>
+      <!-- 둘이 앉을 때만 보인다. 같은 것을 골라도 뒷사람이 다음 캐릭터로 밀린다 -->
+      <span class="group" data-key="character2" hidden>
+        <label>2P</label>
+        <button type="button" data-value="0">배찌<i style="background: #ef5b5b"></i></button>
+        <button type="button" data-value="1">배찌<i style="background: #4fa3f7"></i></button>
+        <button type="button" data-value="2">디즈니<i style="background: #ef5b5b"></i></button>
+        <button type="button" data-value="3">디즈니<i style="background: #4fa3f7"></i></button>
       </span>
       <span class="group" data-key="difficulty">
         <label>봇</label>
