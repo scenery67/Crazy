@@ -298,11 +298,17 @@ function paintPlayer(
 
   drawFrame(ctx, sp.shadow, 0, cx, footY + 6);
 
-  // 팀 표식 — 캐릭터는 자리마다 다르지만 팀과는 무관하다. 이게 없으면 아군을 구분할 수 없다
-  ctx.strokeStyle = TEAM_COLORS[p.teamId % TEAM_COLORS.length] ?? '#fff';
-  ctx.lineWidth = 2.5;
+  // 팀 표식. 2v2에서는 캐릭터 색도 팀을 따라가지만, 난전 중에는 발밑 고리가 먼저 읽힌다.
+  // 테두리만 그리면 바닥 무늬에 묻히므로 안쪽을 옅게 채운다
+  const teamColor = TEAM_COLORS[p.teamId % TEAM_COLORS.length] ?? '#fff';
   ctx.beginPath();
-  ctx.ellipse(cx, footY + 2, TILE_PX * 0.3, TILE_PX * 0.13, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, footY + 2, TILE_PX * 0.32, TILE_PX * 0.14, 0, 0, Math.PI * 2);
+  ctx.fillStyle = teamColor;
+  ctx.globalAlpha *= 0.28;
+  ctx.fill();
+  ctx.globalAlpha = blinking ? 0.45 : 1;
+  ctx.strokeStyle = teamColor;
+  ctx.lineWidth = 3;
   ctx.stroke();
 
   if (trapped) {

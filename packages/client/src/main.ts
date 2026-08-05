@@ -21,7 +21,7 @@ import {
   type TeamId,
 } from '@crazy/core';
 import { GameAudio } from './audio.js';
-import { CHARACTER_COUNT, assignCharacters, characterOf } from './characters.js';
+import { CHARACTER_COUNT, assignCharacters, characterOf, colorOf } from './characters.js';
 import { Corpses } from './corpses.js';
 import { EventDetector } from './events.js';
 import { Keyboard, TouchPad } from './input.js';
@@ -54,6 +54,8 @@ let characters = assignCharacters({
   humans: localCount,
   picks: [character, character2],
   bySeat: false,
+  teams: soloTeams(TOTAL_PLAYERS),
+  teamColors: false,
 });
 
 /**
@@ -105,6 +107,9 @@ function refreshCharacters(): void {
     humans: localCount,
     picks: [character, character2],
     bySeat: playback !== null || online.isLive,
+    teams: teamsForMode(),
+    // 2v2에서는 색이 곧 팀이다. 아군을 한눈에 알아보는 것이 고르는 자유보다 중요하다
+    teamColors: mode === 'duo',
   });
 }
 
@@ -250,24 +255,38 @@ const setupEl = document.querySelector<HTMLElement>('#setup');
 
 /** 현재 설정에 맞춰 버튼 눌림 상태를 표시한다 */
 function syncSetup(): void {
-  // 온라인에서는 자리가 캐릭터를 정한다. 접속 전에 고른 값을 그대로 눌러두면 거짓말이 된다
-  const shownCharacter =
-    online.isLive && online.playerId !== null
-      ? characterOf(characters, online.playerId)
-      : character;
-
+  // 고른 값이 아니라 **실제로 쓰이는 값**을 눌러둔다.
+  // 온라인에서는 자리가, 2v2에서는 팀이 캐릭터를 바꾸므로 둘이 갈릴 수 있다
+  const seat1 = online.isLive ? online.playerId : 0;
   const current: Record<string, string> = {
     mode,
     local: String(localCount),
     difficulty,
-    character: String(shownCharacter),
-    character2: String(character2),
+    character: String(seat1 === null ? character : characterOf(characters, seat1)),
+    character2: String(characterOf(characters, 1)),
   };
   setupEl?.querySelectorAll<HTMLButtonElement>('button[data-value]').forEach((btn) => {
     const key = btn.closest<HTMLElement>('.group')?.dataset['key'];
     if (!key) return;
     btn.setAttribute('aria-pressed', String(current[key] === btn.dataset['value']));
   });
+
+  // 2v2에서는 색이 팀에 묶이므로 내 팀 색 버튼만 남긴다 — 고를 수 있는 것은 종족뿐이다
+  for (const [key, seat] of [
+    ['character', seat1],
+    ['character2', 1],
+  ] as const) {
+    const group = setupEl?.querySelector<HTMLElement>(`.group[data-key="${key}"]`);
+    if (!group) continue;
+    const teamColor = seat === null ? null : colorOf(characterOf(characters, seat));
+    group.querySelectorAll<HTMLButtonElement>('button[data-value]').forEach((btn) => {
+      btn.hidden =
+        mode === 'duo' && !online.isLive && teamColor !== null
+          ? colorOf(Number(btn.dataset['value'])) !== teamColor
+          : false;
+    });
+  }
+
   // 2P 선택기는 둘이 앉을 때만 의미가 있다
   const p2 = setupEl?.querySelector<HTMLElement>('.group[data-key="character2"]');
   if (p2) p2.hidden = localCount < 2;
@@ -286,8 +305,21 @@ setupEl?.addEventListener('click', (e) => {
     // 화면에서 온 값이라 그대로 믿지 않는다
     const picked = Number(value);
     if (!Number.isInteger(picked) || picked < 0 || picked >= CHARACTER_COUNT) return;
-    if (key === 'character') character = picked;
+    const isP1 = key === 'character';
+
+    /**
+     * 남이 쓰던 캐릭터를 고르면 **맞바꾼다.**
+     * 조용히 다음 번호로 밀어내면 건드리지도 않은 상대 캐릭터가 저절로 바뀐 것처럼 보인다.
+     * 2v2에서는 색이 팀에 묶여 둘이 애초에 겹치지 않으므로 맞바꿀 일이 없다.
+     */
+    if (mode !== 'duo' && localCount >= 2) {
+      if (isP1 && picked === character2) character2 = character;
+      else if (!isP1 && picked === character) character = character2;
+    }
+
+    if (isP1) character = picked;
     else character2 = picked;
+
     // 겉모습만 바뀌는 선택이라 판을 갈아엎을 이유가 없다
     refreshCharacters();
     syncSetup();
